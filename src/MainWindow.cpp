@@ -41,6 +41,11 @@ MainWindow::MainWindow(QWidget *parent)
         m_zoomLabel->setText(QStringLiteral("%1%").arg(qRound(scale * 100)));
     });
 
+    connect(m_view, &MapView::polygonFinished, this, [this](MapView::Tool tool, const QPolygonF &polygon) {
+        if (tool == MapView::Tool::Land)
+            addLand(polygon);
+    });
+
     newWorld(true);
     QTimer::singleShot(0, m_view, &MapView::fitWorld);
 }
@@ -70,6 +75,15 @@ void MainWindow::createActions()
 
     connect(m_exploreAction, &QAction::triggered, this, [this] { setMode(MapView::Mode::Explore); });
     connect(m_editAction, &QAction::triggered, this, [this] { setMode(MapView::Mode::Edit); });
+
+    m_landAction = new QAction(tr("Draw Land"), this);
+    m_landAction->setCheckable(true);
+    m_landAction->setShortcut(Qt::Key_L);
+    connect(m_landAction, &QAction::triggered, this, [this] {
+        setMode(MapView::Mode::Edit);
+        m_view->setTool(MapView::Tool::Land);
+        statusBar()->showMessage(tr("Draw land: click to add points, double-click or Enter to finish, Esc to cancel."));
+    });
 
     auto *fitAction = new QAction(tr("Fit World"), this);
     fitAction->setShortcut(Qt::Key_F);
@@ -101,6 +115,8 @@ void MainWindow::createActions()
     toolbar->addSeparator();
     toolbar->addAction(m_exploreAction);
     toolbar->addAction(m_editAction);
+    toolbar->addSeparator();
+    toolbar->addAction(m_landAction);
     toolbar->addSeparator();
     toolbar->addAction(fitAction);
 }
@@ -146,6 +162,14 @@ MapFeature *MainWindow::addBigLand()
     land->setPolygon(path.toFillPolygon());
     m_scene->addItem(land);
     return land;
+}
+
+void MainWindow::addLand(const QPolygonF &polygon)
+{
+    auto *land = new MapFeature(FeatureKind::Land);
+    land->setPolygon(polygon);
+    m_scene->addItem(land);
+    statusBar()->showMessage(tr("Land added."), 2000);
 }
 
 void MainWindow::setMode(MapView::Mode mode)

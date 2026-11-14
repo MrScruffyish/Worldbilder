@@ -1,8 +1,11 @@
 #include "MapView.h"
 
 #include <QGraphicsScene>
+#include <QKeyEvent>
+#include <QLineF>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPainterPath>
 #include <QScrollBar>
 #include <QWheelEvent>
 
@@ -24,7 +27,15 @@ MapView::MapView(QGraphicsScene *scene, QWidget *parent)
 void MapView::setMode(Mode mode)
 {
     m_mode = mode;
+    cancelDraft();
     setDragMode(mode == Mode::Explore ? QGraphicsView::ScrollHandDrag : QGraphicsView::NoDrag);
+    updateCursor();
+}
+
+void MapView::setTool(Tool tool)
+{
+    m_tool = tool;
+    cancelDraft();
     updateCursor();
 }
 
@@ -88,6 +99,28 @@ void MapView::mousePressEvent(QMouseEvent *event)
         event->accept();
         return;
     }
+
+    if (m_mode == Mode::Edit && m_tool != Tool::None) {
+        const QPointF scenePos = mapToScene(event->pos());
+        if (event->button() == Qt::LeftButton) {
+            if (m_tool == Tool::Settlement) {
+                emit pointChosen(m_tool, scenePos);
+            } else {
+                m_draft.append(scenePos);
+                m_cursor = scenePos;
+                m_drafting = true;
+                viewport()->update();
+            }
+            event->accept();
+            return;
+        }
+        if (event->button() == Qt::RightButton && m_drafting) {
+            finishDraft();
+            event->accept();
+            return;
+        }
+    }
+
     QGraphicsView::mousePressEvent(event);
 }
 
@@ -101,7 +134,100 @@ void MapView::mouseMoveEvent(QMouseEvent *event)
         event->accept();
         return;
     }
+
+    if (m_mode == Mode::Edit && m_tool != Tool::None) {
+        m_cursor = mapToScene(event->pos());
+        if (m_drafting)
+            viewport()->update();
+    }
+
     QGraphicsView::mouseMoveEvent(event);
+}
+
+void MapView::mouseDoubleClickEvent(QMouseEvent *event)
+{
+    if (m_mode == Mode::Edit && event->button() == Qt::LeftButton && m_drafting) {
+        if (m_draft.size() >= 2
+            && QLineF(m_draft.at(m_draft.size() - 2), m_draft.last()).length() < 0.01) {
+            m_draft.removeLast();
+        }
+        finishDraft();
+        event->accept();
+        return;
+    }
+    QGraphicsView::mouseDoubleClickEvent(event);
+}
+
+void MapView::keyPressEvent(QKeyEvent *event)
+{
+    if (m_drafting) {
+        if (event->key() == Qt::Key_Escape) {
+            cancelDraft();
+            event->accept();
+            return;
+        }
+        if (event->key() == Qt::Key_Return || event->key() == Qt::Key_Enter) {
+            finishDraft();
+            event->accept();
+            return;
+        }
+    }
+    QGraphicsView::keyPressEvent(event);
+}
+
+void MapView::drawForeground(QPainter *painter, const QRectF &rect)
+{
+    QGraphicsView::drawForeground(painter, rect);
+
+    if (!m_drafting || m_draft.isEmpty())
+        return;
+
+    painter->save();
+    painter->setRenderHint(QPainter::Antialiasing);
+
+    QPen outline(QColor(0x20, 0x30, 0x3c), 0);
+    outline.setStyle(Qt::DashLine);
+    painter->setPen(outline);
+    painter->setBrush(QColor(255, 255, 255, 45));
+
+    if (m_draft.size() >= 3)
+        painter->drawPolygon(m_draft);
+    else
+        painter->drawPolyline(m_draft);
+
+    painter->setBrush(Qt::NoBrush);
+    painter->drawLine(m_draft.last(), m_cursor);
+
+    const double scale = painter->worldTransform().m11();
+    const double radius = 4.0 / scale;
+    painter->setPen(QPen(QColor(0x20, 0x30, 0x3c), 0));
+    painter->setBrush(Qt::white);
+    for (const QPointF &point : m_draft)
+        painter->drawEllipse(point, radius, radius);
+
+    painter->restore();
+}
+
+void MapView::finishDraft()
+{
+    if (m_draft.size() < 3) {
+        cancelDraft();
+        return;
+    }
+    const QPolygonF polygon = m_draft;
+    m_draft.clear();
+    m_drafting = false;
+    viewport()->update();
+    emit polygonFinished(m_tool, polygon);
+}
+
+void MapView::cancelDraft()
+{
+    if (m_draft.isEmpty() && !m_drafting)
+        return;
+    m_draft.clear();
+    m_drafting = false;
+    viewport()->update();
 }
 
 void MapView::mouseReleaseEvent(QMouseEvent *event)
