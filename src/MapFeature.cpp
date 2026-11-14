@@ -364,6 +364,11 @@ void MapFeature::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWid
         painter->drawPolygon(m_polygon);
         if (painter->worldTransform().m11() >= 0.45)
             drawHaloLabel(painter, name, centroid(), labelFont(), QColor(0x3a, 0x33, 0x28));
+
+        painter->setPen(QPen(Qt::white, 1.5));
+        painter->setBrush(QColor(0x3a, 0x2f, 0x24));
+        for (const QPointF &point : m_polygon)
+            painter->drawEllipse(point, 3.5, 3.5);
         break;
     }
     case FeatureKind::Settlement: {
