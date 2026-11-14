@@ -4,7 +4,9 @@
 
 #include <QAction>
 #include <QActionGroup>
+#include <QComboBox>
 #include <QGraphicsScene>
+#include <QIcon>
 #include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
@@ -12,6 +14,7 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QPainterPath>
+#include <QPixmap>
 #include <QStatusBar>
 #include <QTimer>
 #include <QToolBar>
@@ -56,6 +59,9 @@ MainWindow::MainWindow(QWidget *parent)
             break;
         case MapView::Tool::Country:
             addCountry(polygon);
+            break;
+        case MapView::Tool::TerrainArea:
+            addTerrainArea(polygon);
             break;
         default:
             break;
@@ -115,6 +121,24 @@ void MainWindow::createActions()
     toolGroup->addAction(m_landAction);
     toolGroup->addAction(m_countryAction);
 
+    m_terrainAction = new QAction(tr("Terrain Area"), this);
+    m_terrainAction->setCheckable(true);
+    m_terrainAction->setShortcut(Qt::Key_T);
+    connect(m_terrainAction, &QAction::triggered, this, [this] {
+        setMode(MapView::Mode::Edit);
+        m_view->setTool(MapView::Tool::TerrainArea);
+        statusBar()->showMessage(tr("Draw a terrain area: pick a terrain, then click points and finish."));
+    });
+    toolGroup->addAction(m_terrainAction);
+
+    m_terrainCombo = new QComboBox(this);
+    m_terrainCombo->setToolTip(tr("Terrain painted by the terrain tool"));
+    for (TerrainType terrain : terrainTypes()) {
+        QPixmap swatch(14, 14);
+        swatch.fill(terrainColor(terrain));
+        m_terrainCombo->addItem(QIcon(swatch), terrainName(terrain), static_cast<int>(terrain));
+    }
+
     auto *fitAction = new QAction(tr("Fit World"), this);
     fitAction->setShortcut(Qt::Key_F);
     connect(fitAction, &QAction::triggered, this, [this] { m_view->fitWorld(); });
@@ -148,6 +172,8 @@ void MainWindow::createActions()
     toolbar->addSeparator();
     toolbar->addAction(m_landAction);
     toolbar->addAction(m_countryAction);
+    toolbar->addAction(m_terrainAction);
+    toolbar->addWidget(m_terrainCombo);
     toolbar->addSeparator();
     toolbar->addAction(fitAction);
 }
@@ -219,6 +245,20 @@ void MainWindow::addCountry(const QPolygonF &polygon)
     country->color = nextCountryColor();
     m_scene->addItem(country);
     statusBar()->showMessage(tr("%1 created.").arg(name), 2000);
+}
+
+void MainWindow::addTerrainArea(const QPolygonF &polygon)
+{
+    auto *area = new MapFeature(FeatureKind::TerrainArea);
+    area->setPolygon(polygon);
+    area->terrain = currentTerrain();
+    m_scene->addItem(area);
+    statusBar()->showMessage(tr("%1 area placed.").arg(terrainName(area->terrain)), 2000);
+}
+
+TerrainType MainWindow::currentTerrain() const
+{
+    return static_cast<TerrainType>(m_terrainCombo->currentData().toInt());
 }
 
 int MainWindow::featureCount(FeatureKind kind) const

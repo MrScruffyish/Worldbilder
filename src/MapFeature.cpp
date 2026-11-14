@@ -4,6 +4,53 @@
 #include <QPainterPath>
 #include <QStyleOptionGraphicsItem>
 
+namespace {
+
+struct TerrainInfo {
+    TerrainType type;
+    const char *name;
+    QColor color;
+};
+
+const TerrainInfo kTerrains[] = {
+    {TerrainType::Grass, "Grass", QColor(0x7f, 0xae, 0x5a)},
+    {TerrainType::Forest, "Forest", QColor(0x3f, 0x7a, 0x4a)},
+    {TerrainType::Desert, "Desert", QColor(0xdf, 0xc9, 0x8a)},
+    {TerrainType::Mountains, "Mountains", QColor(0x9a, 0x93, 0x8b)},
+    {TerrainType::Water, "Water", QColor(0x4f, 0x83, 0xb8)},
+    {TerrainType::Swamp, "Swamp", QColor(0x6c, 0x7f, 0x5a)},
+};
+
+const TerrainInfo &terrainInfoFor(TerrainType terrain)
+{
+    for (const TerrainInfo &info : kTerrains) {
+        if (info.type == terrain)
+            return info;
+    }
+    return kTerrains[0];
+}
+
+} // namespace
+
+QString terrainName(TerrainType terrain)
+{
+    return QString::fromLatin1(terrainInfoFor(terrain).name);
+}
+
+QColor terrainColor(TerrainType terrain)
+{
+    return terrainInfoFor(terrain).color;
+}
+
+const QVector<TerrainType> &terrainTypes()
+{
+    static const QVector<TerrainType> types = {
+        TerrainType::Grass, TerrainType::Forest, TerrainType::Desert,
+        TerrainType::Mountains, TerrainType::Water, TerrainType::Swamp,
+    };
+    return types;
+}
+
 MapFeature::MapFeature(FeatureKind kind, QGraphicsItem *parent)
     : QGraphicsItem(parent)
     , m_kind(kind)
@@ -110,7 +157,14 @@ void MapFeature::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWid
         painter->drawPolygon(m_polygon);
         break;
     }
-    case FeatureKind::TerrainArea:
+    case FeatureKind::TerrainArea: {
+        QColor fill = terrainColor(terrain);
+        fill.setAlpha(210);
+        painter->setBrush(fill);
+        painter->setPen(Qt::NoPen);
+        painter->drawPolygon(m_polygon);
+        break;
+    }
     case FeatureKind::Region:
     case FeatureKind::Settlement:
         break;

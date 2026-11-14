@@ -4,6 +4,7 @@
 #include <QGraphicsItem>
 #include <QPolygonF>
 #include <QString>
+#include <QVector>
 
 enum class FeatureKind {
     Land,
@@ -12,6 +13,19 @@ enum class FeatureKind {
     Region,
     Settlement,
 };
+
+enum class TerrainType {
+    Grass,
+    Forest,
+    Desert,
+    Mountains,
+    Water,
+    Swamp,
+};
+
+QString terrainName(TerrainType terrain);
+QColor terrainColor(TerrainType terrain);
+const QVector<TerrainType> &terrainTypes();
 
 /// One map object. A single class keeps drawing and saving simple.
 class MapFeature : public QGraphicsItem
@@ -33,6 +47,7 @@ public:
     QString name;
     QString description;
     QColor color;
+    TerrainType terrain = TerrainType::Grass;
 
 private:
     FeatureKind m_kind;
