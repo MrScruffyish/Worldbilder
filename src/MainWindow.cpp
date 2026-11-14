@@ -766,11 +766,40 @@ MapFeature *MainWindow::addBigLand()
 
 void MainWindow::addLand(const QPolygonF &polygon)
 {
+    QPainterPath drawn;
+    drawn.addPolygon(polygon);
+    drawn.closeSubpath();
+
+    QPainterPath merged = drawn;
+    QVector<MapFeature *> absorbed;
+    QString name;
+    for (QGraphicsItem *item : m_scene->items()) {
+        auto *feature = dynamic_cast<MapFeature *>(item);
+        if (!feature || feature->kind() != FeatureKind::Land)
+            continue;
+
+        QPainterPath path;
+        path.addPolygon(feature->polygon());
+        path.closeSubpath();
+        if (!path.intersects(drawn))
+            continue;
+
+        merged = merged.united(path);
+        absorbed.append(feature);
+        if (name.isEmpty() && !feature->name.isEmpty())
+            name = feature->name;
+    }
+
+    const QPolygonF outline = absorbed.isEmpty() ? polygon : merged.toFillPolygon();
+    for (MapFeature *feature : absorbed)
+        delete feature;
+
     auto *land = new MapFeature(FeatureKind::Land);
-    land->setPolygon(polygon);
+    land->setPolygon(outline);
+    land->name = name;
     m_scene->addItem(land);
     pushHistory();
-    statusBar()->showMessage(tr("Land added."), 2000);
+    statusBar()->showMessage(absorbed.isEmpty() ? tr("Land added.") : tr("Land merged."), 2000);
 }
 
 void MainWindow::addCountry(const QPolygonF &polygon)
