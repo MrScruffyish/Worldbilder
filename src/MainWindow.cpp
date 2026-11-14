@@ -22,6 +22,7 @@
 #include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
+#include <QLineF>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -38,8 +39,6 @@
 #include <QWidget>
 
 #include <cmath>
-
-#include <QPushButton>
 
 namespace {
 const QColor kSeaColor(0x3d, 0x6a, 0x93);
@@ -89,6 +88,12 @@ MainWindow::MainWindow(QWidget *parent)
             break;
         case MapView::Tool::Region:
             addRegion(polygon);
+            break;
+        case MapView::Tool::Road:
+            addRoad(polygon);
+            break;
+        case MapView::Tool::River:
+            addRiver(polygon);
             break;
         default:
             break;
@@ -203,6 +208,18 @@ void MainWindow::selectFeature(MapFeature *feature)
     case FeatureKind::Land:
         m_infoDetails->setText(tr("Land"));
         break;
+    case FeatureKind::Road: {
+        double length = 0.0;
+        for (int i = 0; i + 1 < feature->polygon().size(); ++i)
+            length += QLineF(feature->polygon().at(i), feature->polygon().at(i + 1)).length();
+        m_infoDetails->setText(tr("Road, %1 px, cost %2")
+                                   .arg(qRound(length))
+                                   .arg(qRound(roadTravelCost(feature->polygon()))));
+        break;
+    }
+    case FeatureKind::River:
+        m_infoDetails->setText(tr("River"));
+        break;
     }
 
     m_infoDescription->setText(feature->description.isEmpty() ? tr("No description.")
@@ -223,6 +240,12 @@ void MainWindow::onFeatureClicked(MapFeature *feature)
     case FeatureKind::Settlement: {
         const QPointF point = feature->point();
         m_view->zoomToRect(QRectF(point.x() - 180, point.y() - 140, 360, 280));
+        break;
+    }
+    case FeatureKind::Road:
+    case FeatureKind::River: {
+        const QRectF bounds = feature->polygon().boundingRect();
+        m_view->zoomToRect(bounds.adjusted(-40, -40, 40, 40));
         break;
     }
     default:
@@ -818,6 +841,26 @@ void MainWindow::createActions()
     });
     toolGroup->addAction(m_settlementAction);
 
+    m_roadAction = new QAction(tr("Road"), this);
+    m_roadAction->setCheckable(true);
+    m_roadAction->setShortcut(Qt::Key_D);
+    connect(m_roadAction, &QAction::triggered, this, [this] {
+        setMode(MapView::Mode::Edit);
+        m_view->setTool(MapView::Tool::Road);
+        statusBar()->showMessage(tr("Draw a road: click points, double-click or Enter to finish. Terrain affects its cost."));
+    });
+    toolGroup->addAction(m_roadAction);
+
+    m_riverAction = new QAction(tr("River"), this);
+    m_riverAction->setCheckable(true);
+    m_riverAction->setShortcut(Qt::Key_V);
+    connect(m_riverAction, &QAction::triggered, this, [this] {
+        setMode(MapView::Mode::Edit);
+        m_view->setTool(MapView::Tool::River);
+        statusBar()->showMessage(tr("Draw a river: click points, double-click or Enter to finish. Roads crossing it get bridges."));
+    });
+    toolGroup->addAction(m_riverAction);
+
     m_terrainCombo = new QComboBox(this);
     m_terrainCombo->setToolTip(tr("Terrain painted by the terrain tool"));
     for (TerrainType terrain : terrainTypes()) {
@@ -916,6 +959,8 @@ void MainWindow::createActions()
     toolbar->addAction(m_terrainAction);
     toolbar->addAction(m_regionAction);
     toolbar->addAction(m_settlementAction);
+    toolbar->addAction(m_roadAction);
+    toolbar->addAction(m_riverAction);
     toolbar->addWidget(m_terrainCombo);
     toolbar->addSeparator();
     toolbar->addAction(zoomOutAction);
@@ -1082,6 +1127,68 @@ void MainWindow::addRegion(const QPolygonF &polygon)
     m_scene->addItem(region);
     pushHistory();
     statusBar()->showMessage(tr("%1 added to %2.").arg(name, country->name), 2000);
+}
+
+void MainWindow::addRoad(const QPolygonF &polygon)
+{
+    auto *road = new MapFeature(FeatureKind::Road);
+    road->setPolygon(polygon);
+    road->name = tr("Road %1").arg(featureCount(FeatureKind::Road) + 1);
+    m_scene->addItem(road);
+    pushHistory();
+
+    double length = 0.0;
+    for (int i = 0; i + 1 < polygon.size(); ++i)
+        length += QLineF(polygon.at(i), polygon.at(i + 1)).length();
+    statusBar()->showMessage(tr("Road added: %1 px, travel cost %2 (terrain weighted).")
+                                 .arg(qRound(length))
+                                 .arg(qRound(roadTravelCost(polygon))),
+                             3000);
+}
+
+void MainWindow::addRiver(const QPolygonF &polygon)
+{
+    auto *river = new MapFeature(FeatureKind::River);
+    river->setPolygon(polygon);
+    river->name = tr("River %1").arg(featureCount(FeatureKind::River) + 1);
+    m_scene->addItem(river);
+    pushHistory();
+    statusBar()->showMessage(tr("River added. Roads crossing it are drawn with bridges."), 2500);
+}
+
+TerrainType MainWindow::terrainAt(const QPointF &point) const
+{
+    const QList<QGraphicsItem *> items = m_scene->items(point);
+    for (QGraphicsItem *item : items) {
+        auto *feature = dynamic_cast<MapFeature *>(item);
+        if (!feature || !feature->isVisible())
+            continue;
+        if (feature->kind() == FeatureKind::TerrainArea)
+            return feature->terrain;
+        if (feature->kind() == FeatureKind::Land)
+            return TerrainType::Grass;
+    }
+    return TerrainType::Water;
+}
+
+double MainWindow::roadTravelCost(const QPolygonF &polygon) const
+{
+    double cost = 0.0;
+    for (int i = 0; i + 1 < polygon.size(); ++i) {
+        const QPointF &a = polygon.at(i);
+        const QPointF &b = polygon.at(i + 1);
+        const double length = QLineF(a, b).length();
+        if (length <= 0.0)
+            continue;
+
+        const int steps = qMax(1, int(std::ceil(length / 12.0)));
+        const double stepLength = length / steps;
+        for (int step = 0; step < steps; ++step) {
+            const QPointF sample = a + (b - a) * ((step + 0.5) / steps);
+            cost += stepLength * terrainTravelCost(terrainAt(sample));
+        }
+    }
+    return cost;
 }
 
 MapFeature *MainWindow::findCountryAt(const QPointF &point) const

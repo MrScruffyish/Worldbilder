@@ -35,9 +35,13 @@ private:
     void addCountry(const QPolygonF &polygon);
     void addTerrainArea(const QPolygonF &polygon);
     void addRegion(const QPolygonF &polygon);
+    void addRoad(const QPolygonF &polygon);
+    void addRiver(const QPolygonF &polygon);
     void addSettlement(const QPointF &point);
     MapFeature *findCountryAt(const QPointF &point) const;
     QPolygonF clipToLand(const QPolygonF &polygon) const;
+    TerrainType terrainAt(const QPointF &point) const;
+    double roadTravelCost(const QPolygonF &polygon) const;
     TerrainType currentTerrain() const;
     int featureCount(FeatureKind kind) const;
     QColor nextCountryColor() const;
@@ -79,6 +83,8 @@ private:
     QAction *m_terrainAction = nullptr;
     QAction *m_regionAction = nullptr;
     QAction *m_settlementAction = nullptr;
+    QAction *m_roadAction = nullptr;
+    QAction *m_riverAction = nullptr;
     QAction *m_undoAction = nullptr;
     QAction *m_redoAction = nullptr;
     QComboBox *m_terrainCombo = nullptr;

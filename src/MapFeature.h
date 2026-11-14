@@ -13,6 +13,8 @@ enum class FeatureKind {
     Country,
     TerrainArea,
     Region,
+    River,
+    Road,
     Settlement,
 };
 
@@ -33,6 +35,7 @@ enum class SettlementType {
 
 QString terrainName(TerrainType terrain);
 QColor terrainColor(TerrainType terrain);
+double terrainTravelCost(TerrainType terrain);
 const QVector<TerrainType> &terrainTypes();
 QString settlementName(SettlementType type);
 

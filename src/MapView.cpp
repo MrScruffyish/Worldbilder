@@ -244,7 +244,7 @@ void MapView::drawForeground(QPainter *painter, const QRectF &rect)
         painter->setPen(outline);
         painter->setBrush(QColor(255, 255, 255, 45));
 
-        if (m_draft.size() >= 3)
+        if (m_draft.size() >= 3 && !isLineTool())
             painter->drawPolygon(m_draft);
         else
             painter->drawPolyline(m_draft);
@@ -325,7 +325,10 @@ void MapView::updateSnap(const QPointF &scenePos)
             continue;
 
         const QString label = feature->kindName();
-        for (int i = 0; i < polygon.size(); ++i) {
+        const bool closed = feature->kind() != FeatureKind::Road
+                            && feature->kind() != FeatureKind::River;
+        const int segments = closed ? polygon.size() : polygon.size() - 1;
+        for (int i = 0; i < segments; ++i) {
             const QPointF &a = polygon.at(i);
             const QPointF &b = polygon.at((i + 1) % polygon.size());
 
@@ -361,7 +364,7 @@ void MapView::updateSnap(const QPointF &scenePos)
 
 void MapView::finishDraft()
 {
-    if (m_draft.size() < 3) {
+    if (m_draft.size() < minimumDraftPoints()) {
         cancelDraft();
         return;
     }

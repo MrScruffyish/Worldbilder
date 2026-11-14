@@ -3,11 +3,15 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QFontMetricsF>
+#include <QGraphicsScene>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QLineF>
+#include <QPainterPathStroker>
 #include <QStyleOptionGraphicsItem>
 
 #include <algorithm>
+#include <cmath>
 
 namespace {
 
@@ -58,6 +62,42 @@ void drawHaloLabel(QPainter *painter, const QString &text, const QPointF &center
     painter->restore();
 }
 
+QPainterPath polylinePath(const QPolygonF &polygon)
+{
+    QPainterPath path;
+    if (polygon.isEmpty())
+        return path;
+
+    path.moveTo(polygon.first());
+    for (int i = 1; i < polygon.size(); ++i)
+        path.lineTo(polygon.at(i));
+    return path;
+}
+
+void drawRoadBridges(QPainter *painter, const QPolygonF &road, const QPolygonF &river)
+{
+    constexpr double kPi = 3.14159265358979323846;
+    for (int i = 0; i + 1 < road.size(); ++i) {
+        const QLineF roadLine(road.at(i), road.at(i + 1));
+        for (int j = 0; j + 1 < river.size(); ++j) {
+            QPointF intersection;
+            if (roadLine.intersects(QLineF(river.at(j), river.at(j + 1)), &intersection)
+                != QLineF::BoundedIntersection) {
+                continue;
+            }
+
+            const double angle = std::atan2(roadLine.dy(), roadLine.dx()) * 180.0 / kPi;
+            painter->save();
+            painter->translate(intersection);
+            painter->rotate(angle);
+            painter->setPen(QPen(QColor(0x4b, 0x3a, 0x2a), 1.0));
+            painter->setBrush(QColor(0xe8, 0xd8, 0xb0));
+            painter->drawRect(QRectF(-7, -5, 14, 10));
+            painter->restore();
+        }
+    }
+}
+
 } // namespace
 
 QString terrainName(TerrainType terrain)
@@ -68,6 +108,25 @@ QString terrainName(TerrainType terrain)
 QColor terrainColor(TerrainType terrain)
 {
     return terrainInfoFor(terrain).color;
+}
+
+double terrainTravelCost(TerrainType terrain)
+{
+    switch (terrain) {
+    case TerrainType::Grass:
+        return 1.0;
+    case TerrainType::Forest:
+        return 1.4;
+    case TerrainType::Desert:
+        return 1.8;
+    case TerrainType::Mountains:
+        return 3.5;
+    case TerrainType::Water:
+        return 5.0;
+    case TerrainType::Swamp:
+        return 2.5;
+    }
+    return 1.0;
 }
 
 const QVector<TerrainType> &terrainTypes()
@@ -109,8 +168,14 @@ MapFeature::MapFeature(FeatureKind kind, QGraphicsItem *parent)
     case FeatureKind::Region:
         setZValue(3);
         break;
-    case FeatureKind::Settlement:
+    case FeatureKind::River:
+        setZValue(4);
+        break;
+    case FeatureKind::Road:
         setZValue(5);
+        break;
+    case FeatureKind::Settlement:
+        setZValue(6);
         break;
     }
 }
@@ -126,6 +191,10 @@ QString MapFeature::kindName() const
         return QStringLiteral("Terrain");
     case FeatureKind::Region:
         return QStringLiteral("Region");
+    case FeatureKind::River:
+        return QStringLiteral("River");
+    case FeatureKind::Road:
+        return QStringLiteral("Road");
     case FeatureKind::Settlement:
         return QStringLiteral("Settlement");
     }
@@ -165,6 +234,10 @@ QString kindKey(FeatureKind kind)
         return QStringLiteral("terrain");
     case FeatureKind::Region:
         return QStringLiteral("region");
+    case FeatureKind::River:
+        return QStringLiteral("river");
+    case FeatureKind::Road:
+        return QStringLiteral("road");
     case FeatureKind::Settlement:
         return QStringLiteral("settlement");
     }
@@ -174,7 +247,8 @@ QString kindKey(FeatureKind kind)
 } // namespace
 
 QJsonObject MapFeature::toJson() const
-{    QJsonObject object;
+{
+    QJsonObject object;
     object.insert(QStringLiteral("kind"), kindKey(m_kind));
     object.insert(QStringLiteral("name"), name);
     if (!description.isEmpty())
@@ -211,6 +285,10 @@ MapFeature *MapFeature::fromJson(const QJsonObject &object)
         kind = FeatureKind::TerrainArea;
     else if (kindText == QLatin1String("region"))
         kind = FeatureKind::Region;
+    else if (kindText == QLatin1String("river"))
+        kind = FeatureKind::River;
+    else if (kindText == QLatin1String("road"))
+        kind = FeatureKind::Road;
     else if (kindText == QLatin1String("settlement"))
         kind = FeatureKind::Settlement;
     else
@@ -320,6 +398,11 @@ QPainterPath MapFeature::shape() const
         path.addEllipse(m_point, 12, 12);
         return path;
     }
+    if (m_kind == FeatureKind::Road || m_kind == FeatureKind::River) {
+        QPainterPathStroker stroker;
+        stroker.setWidth(10);
+        return stroker.createStroke(polylinePath(m_polygon));
+    }
     path.addPolygon(m_polygon);
     path.closeSubpath();
     return path;
@@ -371,6 +454,38 @@ void MapFeature::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWid
             painter->drawEllipse(point, 3.5, 3.5);
         break;
     }
+    case FeatureKind::River: {
+        QPen pen(QColor(0x46, 0x7e, 0xbf), 3.0);
+        pen.setCapStyle(Qt::RoundCap);
+        pen.setJoinStyle(Qt::RoundJoin);
+        painter->setPen(pen);
+        painter->setBrush(Qt::NoBrush);
+        painter->drawPath(polylinePath(m_polygon));
+        break;
+    }
+    case FeatureKind::Road: {
+        QPen casing(QColor(0x6b, 0x54, 0x3b), 6.0);
+        casing.setCapStyle(Qt::RoundCap);
+        casing.setJoinStyle(Qt::RoundJoin);
+        painter->setPen(casing);
+        painter->setBrush(Qt::NoBrush);
+        painter->drawPath(polylinePath(m_polygon));
+
+        QPen inner(QColor(0xd9, 0xc0, 0x8f), 3.0);
+        inner.setCapStyle(Qt::RoundCap);
+        inner.setJoinStyle(Qt::RoundJoin);
+        painter->setPen(inner);
+        painter->drawPath(polylinePath(m_polygon));
+
+        if (scene()) {
+            for (QGraphicsItem *item : scene()->items()) {
+                auto *river = dynamic_cast<MapFeature *>(item);
+                if (river && river->kind() == FeatureKind::River)
+                    drawRoadBridges(painter, m_polygon, river->polygon());
+            }
+        }
+        break;
+    }
     case FeatureKind::Settlement: {
         painter->save();
         painter->translate(m_point);
@@ -416,6 +531,8 @@ void MapFeature::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWid
         painter->setPen(QPen(QColor(0xff, 0x9f, 0x1c), 4.0));
         if (m_kind == FeatureKind::Settlement)
             painter->drawEllipse(m_point, 13, 13);
+        else if (m_kind == FeatureKind::Road || m_kind == FeatureKind::River)
+            painter->drawPath(polylinePath(m_polygon));
         else
             painter->drawPolygon(m_polygon);
     }

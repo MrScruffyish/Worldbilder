@@ -29,6 +29,8 @@ public:
         TerrainArea,
         Region,
         Settlement,
+        Road,
+        River,
     };
 
     explicit MapView(QGraphicsScene *scene, QWidget *parent = nullptr);
@@ -67,6 +69,8 @@ private:
     void finishDraft();
     void cancelDraft();
     void updateSnap(const QPointF &scenePos);
+    bool isLineTool() const { return m_tool == Tool::Road || m_tool == Tool::River; }
+    int minimumDraftPoints() const { return isLineTool() ? 2 : 3; }
 
     Mode m_mode = Mode::Explore;
     Tool m_tool = Tool::None;
