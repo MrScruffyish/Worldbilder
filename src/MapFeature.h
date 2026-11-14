@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QColor>
+#include <QFont>
 #include <QGraphicsItem>
 #include <QPolygonF>
 #include <QString>
@@ -61,6 +62,8 @@ public:
     SettlementType settlement = SettlementType::City;
 
 private:
+    QFont labelFont() const;
+
     FeatureKind m_kind;
     QPolygonF m_polygon;
     QPointF m_point;

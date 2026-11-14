@@ -2,7 +2,10 @@
 
 #include <QPainter>
 #include <QPainterPath>
+#include <QFontMetricsF>
 #include <QStyleOptionGraphicsItem>
+
+#include <algorithm>
 
 namespace {
 
@@ -28,6 +31,29 @@ const TerrainInfo &terrainInfoFor(TerrainType terrain)
             return info;
     }
     return kTerrains[0];
+}
+
+void drawHaloLabel(QPainter *painter, const QString &text, const QPointF &center,
+                   const QFont &font, const QColor &color)
+{
+    if (text.isEmpty())
+        return;
+
+    const QFontMetricsF metrics(font);
+    const qreal width = metrics.horizontalAdvance(text);
+    const qreal baseline = center.y() - metrics.height() / 2.0 + metrics.ascent();
+
+    QPainterPath path;
+    path.addText(QPointF(center.x() - width / 2.0, baseline), font, text);
+
+    painter->save();
+    painter->setPen(QPen(Qt::white, 3.5));
+    painter->setBrush(Qt::white);
+    painter->drawPath(path);
+    painter->setPen(QPen(color, 0.8));
+    painter->setBrush(color);
+    painter->drawPath(path);
+    painter->restore();
 }
 
 } // namespace
@@ -145,11 +171,40 @@ QPointF MapFeature::centroid() const
     return QPointF(cx / (6.0 * area), cy / (6.0 * area));
 }
 
+QFont MapFeature::labelFont() const
+{
+    QFont font;
+    if (m_kind == FeatureKind::Country) {
+        font.setPixelSize(18);
+        font.setBold(true);
+    } else if (m_kind == FeatureKind::Region) {
+        font.setPixelSize(12);
+        font.setBold(true);
+    } else if (m_kind == FeatureKind::Settlement) {
+        font.setPixelSize(11);
+    }
+    return font;
+}
+
 QRectF MapFeature::boundingRect() const
 {
-    if (m_kind == FeatureKind::Settlement)
-        return QRectF(m_point.x() - 14, m_point.y() - 16, 160, 34);
-    return m_polygon.boundingRect().adjusted(-4, -4, 4, 4);
+    if (m_kind == FeatureKind::Settlement) {
+        const QFontMetricsF metrics(labelFont());
+        const qreal textWidth = metrics.horizontalAdvance(name);
+        const qreal width = std::max(28.0, textWidth + 34.0);
+        return QRectF(m_point.x() - 14, m_point.y() - 16, width, 34);
+    }
+
+    QRectF rect = m_polygon.boundingRect().adjusted(-4, -4, 4, 4);
+    if (!name.isEmpty() && (m_kind == FeatureKind::Country || m_kind == FeatureKind::Region)) {
+        const QFontMetricsF metrics(labelFont());
+        const qreal width = metrics.horizontalAdvance(name);
+        const QPointF center = centroid();
+        const QRectF labelRect(center.x() - width / 2.0 - 4, center.y() - metrics.height() / 2.0 - 4,
+                               width + 8, metrics.height() + 8);
+        rect = rect.united(labelRect);
+    }
+    return rect;
 }
 
 QPainterPath MapFeature::shape() const
@@ -181,6 +236,7 @@ void MapFeature::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWid
         painter->setBrush(fill);
         painter->setPen(QPen(color.isValid() ? color.darker(160) : QColor(0x8a, 0x35, 0x2c), 2.5));
         painter->drawPolygon(m_polygon);
+        drawHaloLabel(painter, name, centroid(), labelFont(), QColor(0x2b, 0x26, 0x1e));
         break;
     }
     case FeatureKind::TerrainArea: {
@@ -200,6 +256,8 @@ void MapFeature::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWid
         pen.setStyle(Qt::DashLine);
         painter->setPen(pen);
         painter->drawPolygon(m_polygon);
+        if (painter->worldTransform().m11() >= 0.45)
+            drawHaloLabel(painter, name, centroid(), labelFont(), QColor(0x3a, 0x33, 0x28));
         break;
     }
     case FeatureKind::Settlement: {
@@ -224,6 +282,20 @@ void MapFeature::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWid
             painter->drawEllipse(QPointF(0, 0), radius, radius);
         }
         painter->restore();
+
+        if (!name.isEmpty() && painter->worldTransform().m11() >= 0.3) {
+            const QFont font = labelFont();
+            const QFontMetricsF metrics(font);
+            const qreal width = metrics.horizontalAdvance(name);
+            const QRectF textRect(m_point.x() + 13, m_point.y() - metrics.height() / 2.0 - 2,
+                                  width + 8, metrics.height() + 4);
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(QColor(255, 255, 255, 215));
+            painter->drawRoundedRect(textRect, 3, 3);
+            painter->setFont(font);
+            painter->setPen(QColor(0x32, 0x2d, 0x26));
+            painter->drawText(textRect, Qt::AlignCenter, name);
+        }
         break;
     }
     }
