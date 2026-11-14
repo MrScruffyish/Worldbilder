@@ -19,8 +19,9 @@ cmake --build build
 Two modes, switched in the toolbar or with `F1` / `F2`:
 
 - **Explore** - drag to pan, wheel to zoom. Click a country or region to zoom
-  into it; regions appear once you are zoomed in. Click a settlement for its
-  details. Wheel and the toolbar zoom out again; `F` fits the whole world.
+  into it; regions and settlements appear once you are zoomed in. Click a
+  settlement for its details. Wheel and the toolbar zoom out again; `F` fits
+  the whole world.
 - **Edit** - pick a tool and click map points; double-click, right-click or
   `Enter` closes the polygon, `Esc` cancels. Middle-drag pans while editing.
 

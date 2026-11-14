@@ -228,11 +228,13 @@ void MainWindow::onFeatureClicked(MapFeature *feature)
 
 void MainWindow::updateVisibility(double scale)
 {
-    const bool showRegions = m_view->mode() == MapView::Mode::Edit || scale >= 0.5;
+    const bool showDetails = m_view->mode() == MapView::Mode::Edit || scale >= 0.5;
     for (QGraphicsItem *item : m_scene->items()) {
         auto *feature = dynamic_cast<MapFeature *>(item);
-        if (feature && feature->kind() == FeatureKind::Region)
-            feature->setVisible(showRegions);
+        if (feature && (feature->kind() == FeatureKind::Region
+                        || feature->kind() == FeatureKind::Settlement)) {
+            feature->setVisible(showDetails);
+        }
     }
 }
 
