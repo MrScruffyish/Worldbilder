@@ -165,7 +165,17 @@ void MapFeature::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWid
         painter->drawPolygon(m_polygon);
         break;
     }
-    case FeatureKind::Region:
+    case FeatureKind::Region: {
+        QColor border = color.isValid() ? color.darker(180) : QColor(0x55, 0x4a, 0x3a);
+        QColor fill = color.isValid() ? color : QColor(0xaa, 0xaa, 0xaa);
+        fill.setAlpha(30);
+        painter->setBrush(fill);
+        QPen pen(border, 1.6);
+        pen.setStyle(Qt::DashLine);
+        painter->setPen(pen);
+        painter->drawPolygon(m_polygon);
+        break;
+    }
     case FeatureKind::Settlement:
         break;
     }

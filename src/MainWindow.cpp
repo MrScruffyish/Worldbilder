@@ -63,6 +63,9 @@ MainWindow::MainWindow(QWidget *parent)
         case MapView::Tool::TerrainArea:
             addTerrainArea(polygon);
             break;
+        case MapView::Tool::Region:
+            addRegion(polygon);
+            break;
         default:
             break;
         }
@@ -131,6 +134,16 @@ void MainWindow::createActions()
     });
     toolGroup->addAction(m_terrainAction);
 
+    m_regionAction = new QAction(tr("Region"), this);
+    m_regionAction->setCheckable(true);
+    m_regionAction->setShortcut(Qt::Key_R);
+    connect(m_regionAction, &QAction::triggered, this, [this] {
+        setMode(MapView::Mode::Edit);
+        m_view->setTool(MapView::Tool::Region);
+        statusBar()->showMessage(tr("Draw a region inside a country."));
+    });
+    toolGroup->addAction(m_regionAction);
+
     m_terrainCombo = new QComboBox(this);
     m_terrainCombo->setToolTip(tr("Terrain painted by the terrain tool"));
     for (TerrainType terrain : terrainTypes()) {
@@ -173,6 +186,7 @@ void MainWindow::createActions()
     toolbar->addAction(m_landAction);
     toolbar->addAction(m_countryAction);
     toolbar->addAction(m_terrainAction);
+    toolbar->addAction(m_regionAction);
     toolbar->addWidget(m_terrainCombo);
     toolbar->addSeparator();
     toolbar->addAction(fitAction);
@@ -259,6 +273,45 @@ void MainWindow::addTerrainArea(const QPolygonF &polygon)
 TerrainType MainWindow::currentTerrain() const
 {
     return static_cast<TerrainType>(m_terrainCombo->currentData().toInt());
+}
+
+void MainWindow::addRegion(const QPolygonF &polygon)
+{
+    MapFeature probe(FeatureKind::Region);
+    probe.setPolygon(polygon);
+    MapFeature *country = findCountryAt(probe.centroid());
+    if (!country) {
+        QMessageBox::information(this, tr("Region"), tr("Draw the region inside a country."));
+        return;
+    }
+
+    bool ok = false;
+    const QString name = QInputDialog::getText(this, tr("New Region"), tr("Name:"), QLineEdit::Normal,
+                                               tr("Region %1").arg(featureCount(FeatureKind::Region) + 1),
+                                               &ok)
+                             .trimmed();
+    if (!ok || name.isEmpty())
+        return;
+
+    auto *region = new MapFeature(FeatureKind::Region);
+    region->setPolygon(polygon);
+    region->name = name;
+    region->countryName = country->name;
+    region->color = country->color;
+    m_scene->addItem(region);
+    statusBar()->showMessage(tr("%1 added to %2.").arg(name, country->name), 2000);
+}
+
+MapFeature *MainWindow::findCountryAt(const QPointF &point) const
+{
+    for (QGraphicsItem *item : m_scene->items()) {
+        auto *feature = dynamic_cast<MapFeature *>(item);
+        if (feature && feature->kind() == FeatureKind::Country
+            && feature->polygon().containsPoint(point, Qt::OddEvenFill)) {
+            return feature;
+        }
+    }
+    return nullptr;
 }
 
 int MainWindow::featureCount(FeatureKind kind) const

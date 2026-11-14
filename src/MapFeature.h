@@ -46,6 +46,7 @@ public:
 
     QString name;
     QString description;
+    QString countryName;
     QColor color;
     TerrainType terrain = TerrainType::Grass;
 
