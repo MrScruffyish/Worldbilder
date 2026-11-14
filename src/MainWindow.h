@@ -52,6 +52,16 @@ private:
     bool readWorld(const QString &path);
     void resizeWorld();
     void updateTitle();
+    void showRandomDialog();
+    void addRandomLand(int count);
+    void addRandomCountries(int count);
+    void addRandomRegions(int count);
+    void addRandomTerrainAreas(int count);
+    void addRandomSettlements(int count);
+    QPointF randomWorldPoint() const;
+    QPolygonF randomBlob(const QPointF &center, double radius) const;
+    QPolygonF randomPolygonInCountry(MapFeature *country) const;
+    MapFeature *randomCountry() const;
     QJsonObject worldToJson() const;
     void restoreFromJson(const QJsonObject &root);
     void resetHistory();

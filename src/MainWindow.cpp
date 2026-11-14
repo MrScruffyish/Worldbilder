@@ -14,6 +14,7 @@
 #include <QFont>
 #include <QFormLayout>
 #include <QGraphicsScene>
+#include <QHBoxLayout>
 #include <QIcon>
 #include <QInputDialog>
 #include <QJsonArray>
@@ -28,12 +29,15 @@
 #include <QPixmap>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QRandomGenerator>
 #include <QSpinBox>
 #include <QStatusBar>
 #include <QTimer>
 #include <QToolBar>
 #include <QVBoxLayout>
 #include <QWidget>
+
+#include <cmath>
 
 #include <QPushButton>
 
@@ -546,6 +550,202 @@ void MainWindow::updateTitle()
                        : tr("Worldbilder - %1").arg(QFileInfo(m_currentFile).fileName()));
 }
 
+void MainWindow::showRandomDialog()
+{
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Random Additions"));
+
+    auto *layout = new QVBoxLayout(&dialog);
+    auto *countRow = new QHBoxLayout;
+    countRow->addWidget(new QLabel(tr("Count:"), &dialog));
+    auto *countSpin = new QSpinBox(&dialog);
+    countSpin->setRange(1, 50);
+    countSpin->setValue(5);
+    countRow->addWidget(countSpin);
+    countRow->addStretch();
+    layout->addLayout(countRow);
+
+    auto addButton = [&](const QString &text, void (MainWindow::*method)(int)) {
+        auto *button = new QPushButton(text, &dialog);
+        connect(button, &QPushButton::clicked, this,
+                [this, countSpin, method] { (this->*method)(countSpin->value()); });
+        layout->addWidget(button);
+    };
+
+    addButton(tr("Add random land"), &MainWindow::addRandomLand);
+    addButton(tr("Add random countries"), &MainWindow::addRandomCountries);
+    addButton(tr("Add random regions"), &MainWindow::addRandomRegions);
+    addButton(tr("Add random terrain"), &MainWindow::addRandomTerrainAreas);
+    addButton(tr("Add random settlements"), &MainWindow::addRandomSettlements);
+
+    auto *closeButton = new QPushButton(tr("Close"), &dialog);
+    connect(closeButton, &QPushButton::clicked, &dialog, &QDialog::accept);
+    layout->addWidget(closeButton);
+
+    dialog.exec();
+}
+
+QPointF MainWindow::randomWorldPoint() const
+{
+    return QPointF(QRandomGenerator::global()->generateDouble() * m_worldSize.width(),
+                   QRandomGenerator::global()->generateDouble() * m_worldSize.height());
+}
+
+QPolygonF MainWindow::randomBlob(const QPointF &center, double radius) const
+{
+    const int points = 6 + QRandomGenerator::global()->bounded(4);
+    QPolygonF polygon;
+    constexpr double kPi = 3.14159265358979323846;
+    for (int i = 0; i < points; ++i) {
+        const double angle = 2.0 * kPi * i / points
+                             + (QRandomGenerator::global()->generateDouble() - 0.5) * 0.5;
+        const double r = radius * (0.55 + 0.45 * QRandomGenerator::global()->generateDouble());
+        polygon.append(center + QPointF(std::cos(angle) * r, std::sin(angle) * r));
+    }
+    return polygon;
+}
+
+MapFeature *MainWindow::randomCountry() const
+{
+    QVector<MapFeature *> countries;
+    for (QGraphicsItem *item : m_scene->items()) {
+        auto *feature = dynamic_cast<MapFeature *>(item);
+        if (feature && feature->kind() == FeatureKind::Country)
+            countries.append(feature);
+    }
+    if (countries.isEmpty())
+        return nullptr;
+    return countries.at(QRandomGenerator::global()->bounded(countries.size()));
+}
+
+QPolygonF MainWindow::randomPolygonInCountry(MapFeature *country) const
+{
+    const QRectF bounds = country->polygon().boundingRect();
+    QPainterPath countryPath;
+    countryPath.addPolygon(country->polygon());
+    countryPath.closeSubpath();
+
+    for (int attempt = 0; attempt < 40; ++attempt) {
+        const QPointF center(bounds.left() + QRandomGenerator::global()->generateDouble() * bounds.width(),
+                             bounds.top() + QRandomGenerator::global()->generateDouble() * bounds.height());
+        if (!country->polygon().containsPoint(center, Qt::OddEvenFill))
+            continue;
+
+        const double radius = qMin(bounds.width(), bounds.height())
+                              * (0.08 + 0.15 * QRandomGenerator::global()->generateDouble());
+        QPainterPath blob;
+        blob.addPolygon(randomBlob(center, qMax(radius, 20.0)));
+        blob.closeSubpath();
+
+        const QPolygonF clipped = blob.intersected(countryPath).toFillPolygon();
+        if (clipped.size() >= 3)
+            return clipped;
+    }
+    return {};
+}
+
+void MainWindow::addRandomLand(int count)
+{
+    int added = 0;
+    for (int i = 0; i < count; ++i) {
+        const QPointF center = randomWorldPoint();
+        const double radius = 120.0 + QRandomGenerator::global()->generateDouble() * 280.0;
+        addLand(randomBlob(center, radius));
+        ++added;
+    }
+    statusBar()->showMessage(tr("Added %1 random land areas.").arg(added), 2500);
+}
+
+void MainWindow::addRandomCountries(int count)
+{
+    int added = 0;
+    for (int i = 0; i < count; ++i) {
+        QPolygonF polygon;
+        for (int attempt = 0; attempt < 20 && polygon.size() < 3; ++attempt) {
+            polygon = clipToLand(randomBlob(randomWorldPoint(),
+                                            80.0 + QRandomGenerator::global()->generateDouble() * 220.0));
+        }
+        if (polygon.size() < 3)
+            continue;
+
+        auto *country = new MapFeature(FeatureKind::Country);
+        country->setPolygon(polygon);
+        country->name = tr("Country %1").arg(featureCount(FeatureKind::Country) + 1);
+        country->color = nextCountryColor();
+        m_scene->addItem(country);
+        ++added;
+    }
+    if (added > 0)
+        pushHistory();
+    statusBar()->showMessage(added > 0 ? tr("Added %1 random countries.").arg(added)
+                                       : tr("Draw some land first."),
+                             2500);
+}
+
+void MainWindow::addRandomRegions(int count)
+{
+    int added = 0;
+    for (int i = 0; i < count; ++i) {
+        MapFeature *country = randomCountry();
+        if (!country)
+            break;
+
+        const QPolygonF polygon = randomPolygonInCountry(country);
+        if (polygon.size() < 3)
+            continue;
+
+        auto *region = new MapFeature(FeatureKind::Region);
+        region->setPolygon(polygon);
+        region->name = tr("Region %1").arg(featureCount(FeatureKind::Region) + 1);
+        region->countryName = country->name;
+        region->color = country->color;
+        m_scene->addItem(region);
+        ++added;
+    }
+    if (added > 0)
+        pushHistory();
+    statusBar()->showMessage(added > 0 ? tr("Added %1 random regions.").arg(added)
+                                       : tr("Draw a country first."),
+                             2500);
+}
+
+void MainWindow::addRandomTerrainAreas(int count)
+{
+    const QVector<TerrainType> &types = terrainTypes();
+    for (int i = 0; i < count; ++i) {
+        auto *area = new MapFeature(FeatureKind::TerrainArea);
+        area->setPolygon(randomBlob(randomWorldPoint(),
+                                    50.0 + QRandomGenerator::global()->generateDouble() * 140.0));
+        area->terrain = types.at(QRandomGenerator::global()->bounded(types.size()));
+        m_scene->addItem(area);
+    }
+    pushHistory();
+    statusBar()->showMessage(tr("Added %1 random terrain areas.").arg(count), 2500);
+}
+
+void MainWindow::addRandomSettlements(int count)
+{
+    for (int i = 0; i < count; ++i) {
+        const auto type = static_cast<SettlementType>(QRandomGenerator::global()->bounded(3));
+        const QString typeName = settlementName(type);
+
+        int sameType = 0;
+        for (QGraphicsItem *item : m_scene->items()) {
+            auto *feature = dynamic_cast<MapFeature *>(item);
+            if (feature && feature->kind() == FeatureKind::Settlement && feature->settlement == type)
+                ++sameType;
+        }
+
+        auto *settlement = new MapFeature(FeatureKind::Settlement);
+        settlement->setPoint(randomWorldPoint());
+        settlement->settlement = type;
+        settlement->name = QStringLiteral("%1 %2").arg(typeName).arg(sameType + 1);
+        m_scene->addItem(settlement);
+    }
+    pushHistory();
+    statusBar()->showMessage(tr("Added %1 random settlements.").arg(count), 2500);
+}
+
 void MainWindow::createActions()
 {
     auto *modeGroup = new QActionGroup(this);
@@ -667,6 +867,9 @@ void MainWindow::createActions()
     auto *resizeAction = new QAction(tr("Resize World..."), this);
     connect(resizeAction, &QAction::triggered, this, &MainWindow::resizeWorld);
 
+    auto *randomAction = new QAction(tr("Random Additions..."), this);
+    connect(randomAction, &QAction::triggered, this, &MainWindow::showRandomDialog);
+
     auto *quitAction = new QAction(tr("Quit"), this);
     quitAction->setShortcut(QKeySequence::Quit);
     connect(quitAction, &QAction::triggered, this, &QWidget::close);
@@ -689,6 +892,9 @@ void MainWindow::createActions()
     auto *editMenu = menuBar()->addMenu(tr("&Edit"));
     editMenu->addAction(m_undoAction);
     editMenu->addAction(m_redoAction);
+
+    auto *generateMenu = menuBar()->addMenu(tr("&Generate"));
+    generateMenu->addAction(randomAction);
 
     auto *viewMenu = menuBar()->addMenu(tr("&View"));
     m_viewMenu = viewMenu;

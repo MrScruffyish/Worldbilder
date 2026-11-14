@@ -42,7 +42,9 @@ The **Info** dock shows the selected feature. **Edit...** changes its name and
 description; renaming a country updates its regions.
 
 `File > New World...` starts from sea or a big land area. `File > Resize
-World...` extends the map; features stay where they are.
+World...` extends the map; features stay where they are. `Generate > Random
+Additions...` adds a chosen number of land, countries, regions, terrain or
+settlements for quick maps.
 
 ## World files
 
