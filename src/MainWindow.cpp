@@ -784,7 +784,7 @@ void MainWindow::addCountry(const QPolygonF &polygon)
         return;
 
     auto *country = new MapFeature(FeatureKind::Country);
-    country->setPolygon(polygon);
+    country->setPolygon(clipToLand(polygon));
     country->name = name;
     country->color = nextCountryColor();
     m_scene->addItem(country);
@@ -859,6 +859,34 @@ MapFeature *MainWindow::findCountryAt(const QPointF &point) const
         }
     }
     return nullptr;
+}
+
+QPolygonF MainWindow::clipToLand(const QPolygonF &polygon) const
+{
+    if (polygon.size() < 3)
+        return polygon;
+
+    QPainterPath land;
+    bool hasLand = false;
+    for (QGraphicsItem *item : m_scene->items()) {
+        auto *feature = dynamic_cast<MapFeature *>(item);
+        if (!feature || feature->kind() != FeatureKind::Land)
+            continue;
+        land.addPolygon(feature->polygon());
+        land.closeSubpath();
+        hasLand = true;
+    }
+    if (!hasLand)
+        return polygon;
+
+    QPainterPath shape;
+    shape.addPolygon(polygon);
+    shape.closeSubpath();
+    if (!shape.intersects(land))
+        return polygon;
+
+    const QPolygonF clipped = shape.intersected(land).toFillPolygon();
+    return clipped.size() >= 3 ? clipped : polygon;
 }
 
 void MainWindow::addSettlement(const QPointF &point)

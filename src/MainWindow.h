@@ -37,6 +37,7 @@ private:
     void addRegion(const QPolygonF &polygon);
     void addSettlement(const QPointF &point);
     MapFeature *findCountryAt(const QPointF &point) const;
+    QPolygonF clipToLand(const QPolygonF &polygon) const;
     TerrainType currentTerrain() const;
     int featureCount(FeatureKind kind) const;
     QColor nextCountryColor() const;
