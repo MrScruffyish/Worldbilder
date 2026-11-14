@@ -64,6 +64,7 @@ public:
     bool highlighted = false;
 
     QJsonObject toJson() const;
+    static MapFeature *fromJson(const QJsonObject &object);
 
 private:
     QFont labelFont() const;

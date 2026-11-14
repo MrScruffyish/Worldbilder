@@ -43,6 +43,8 @@ private:
     void saveWorld();
     void saveWorldAs();
     bool writeWorld(const QString &path);
+    void loadWorld();
+    bool readWorld(const QString &path);
     void updateTitle();
 
     QGraphicsScene *m_scene;

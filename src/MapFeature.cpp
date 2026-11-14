@@ -168,8 +168,7 @@ QString kindKey(FeatureKind kind)
 } // namespace
 
 QJsonObject MapFeature::toJson() const
-{
-    QJsonObject object;
+{    QJsonObject object;
     object.insert(QStringLiteral("kind"), kindKey(m_kind));
     object.insert(QStringLiteral("name"), name);
     if (!description.isEmpty())
@@ -192,6 +191,57 @@ QJsonObject MapFeature::toJson() const
     }
     object.insert(QStringLiteral("polygon"), points);
     return object;
+}
+
+MapFeature *MapFeature::fromJson(const QJsonObject &object)
+{
+    const QString kindText = object.value(QStringLiteral("kind")).toString();
+    FeatureKind kind;
+    if (kindText == QLatin1String("land"))
+        kind = FeatureKind::Land;
+    else if (kindText == QLatin1String("country"))
+        kind = FeatureKind::Country;
+    else if (kindText == QLatin1String("terrain"))
+        kind = FeatureKind::TerrainArea;
+    else if (kindText == QLatin1String("region"))
+        kind = FeatureKind::Region;
+    else if (kindText == QLatin1String("settlement"))
+        kind = FeatureKind::Settlement;
+    else
+        return nullptr;
+
+    auto *feature = new MapFeature(kind);
+    feature->name = object.value(QStringLiteral("name")).toString();
+    feature->description = object.value(QStringLiteral("description")).toString();
+    feature->countryName = object.value(QStringLiteral("country")).toString();
+
+    const QString colorText = object.value(QStringLiteral("color")).toString();
+    if (!colorText.isEmpty())
+        feature->color = QColor(colorText);
+
+    const int terrain = object.value(QStringLiteral("terrain")).toInt();
+    if (terrain >= static_cast<int>(TerrainType::Grass)
+        && terrain <= static_cast<int>(TerrainType::Swamp)) {
+        feature->terrain = static_cast<TerrainType>(terrain);
+    }
+
+    const int settlement = object.value(QStringLiteral("settlement")).toInt();
+    if (settlement >= static_cast<int>(SettlementType::City)
+        && settlement <= static_cast<int>(SettlementType::Village)) {
+        feature->settlement = static_cast<SettlementType>(settlement);
+    }
+
+    const QJsonArray point = object.value(QStringLiteral("point")).toArray();
+    if (point.size() >= 2)
+        feature->setPoint(QPointF(point.at(0).toDouble(), point.at(1).toDouble()));
+
+    QPolygonF polygon;
+    const QJsonArray coordinates = object.value(QStringLiteral("polygon")).toArray();
+    for (int i = 0; i + 1 < coordinates.size(); i += 2)
+        polygon.append(QPointF(coordinates.at(i).toDouble(), coordinates.at(i + 1).toDouble()));
+    feature->setPolygon(polygon);
+
+    return feature;
 }
 
 QPointF MapFeature::centroid() const

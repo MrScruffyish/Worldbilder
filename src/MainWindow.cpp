@@ -281,6 +281,77 @@ bool MainWindow::writeWorld(const QString &path)
     return true;
 }
 
+void MainWindow::loadWorld()
+{
+    const QString path = QFileDialog::getOpenFileName(this, tr("Open World"), m_currentFile,
+                                                      tr("World files (*.world)"));
+    if (path.isEmpty())
+        return;
+
+    if (readWorld(path)) {
+        m_currentFile = path;
+        updateTitle();
+        statusBar()->showMessage(tr("Loaded %1").arg(QFileInfo(path).fileName()), 2500);
+    }
+}
+
+bool MainWindow::readWorld(const QString &path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        QMessageBox::warning(this, tr("Open World"),
+                             tr("Could not read %1:\n%2").arg(path, file.errorString()));
+        return false;
+    }
+
+    const QByteArray json = qUncompress(file.readAll());
+    if (json.isEmpty()) {
+        QMessageBox::warning(this, tr("Open World"),
+                             tr("Could not read %1:\nThe file is not a compressed world file.").arg(path));
+        return false;
+    }
+
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(json, &parseError);
+    if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+        QMessageBox::warning(this, tr("Open World"),
+                             tr("Could not read %1:\n%2").arg(path, parseError.errorString()));
+        return false;
+    }
+
+    const QJsonObject root = document.object();
+    const double width = root.value(QStringLiteral("width")).toDouble();
+    const double height = root.value(QStringLiteral("height")).toDouble();
+    if (width <= 0 || height <= 0) {
+        QMessageBox::warning(this, tr("Open World"),
+                             tr("Could not read %1:\nThe world size is missing.").arg(path));
+        return false;
+    }
+
+    QVector<MapFeature *> features;
+    const QJsonArray featureArray = root.value(QStringLiteral("features")).toArray();
+    for (const QJsonValue &value : featureArray) {
+        MapFeature *feature = MapFeature::fromJson(value.toObject());
+        if (!feature) {
+            qDeleteAll(features);
+            QMessageBox::warning(this, tr("Open World"),
+                                 tr("Could not read %1:\nIt contains an unknown feature.").arg(path));
+            return false;
+        }
+        features.append(feature);
+    }
+
+    selectFeature(nullptr);
+    m_scene->clear();
+    m_worldSize = QSizeF(width, height);
+    m_scene->setSceneRect(QRectF(QPointF(0, 0), m_worldSize));
+    m_view->setWorldSize(m_worldSize);
+    for (MapFeature *feature : features)
+        m_scene->addItem(feature);
+    m_view->fitWorld();
+    return true;
+}
+
 void MainWindow::updateTitle()
 {
     setWindowTitle(m_currentFile.isEmpty()
@@ -392,12 +463,17 @@ void MainWindow::createActions()
     saveAsAction->setShortcut(QKeySequence::SaveAs);
     connect(saveAsAction, &QAction::triggered, this, &MainWindow::saveWorldAs);
 
+    auto *openAction = new QAction(tr("Open World..."), this);
+    openAction->setShortcut(QKeySequence::Open);
+    connect(openAction, &QAction::triggered, this, &MainWindow::loadWorld);
+
     auto *quitAction = new QAction(tr("Quit"), this);
     quitAction->setShortcut(QKeySequence::Quit);
     connect(quitAction, &QAction::triggered, this, &QWidget::close);
 
     auto *fileMenu = menuBar()->addMenu(tr("&File"));
     fileMenu->addAction(newAction);
+    fileMenu->addAction(openAction);
     fileMenu->addSeparator();
     fileMenu->addAction(saveAction);
     fileMenu->addAction(saveAsAction);
@@ -417,6 +493,7 @@ void MainWindow::createActions()
     auto *toolbar = addToolBar(tr("Main"));
     toolbar->setMovable(false);
     toolbar->addAction(newAction);
+    toolbar->addAction(openAction);
     toolbar->addAction(saveAction);
     toolbar->addSeparator();
     toolbar->addAction(m_exploreAction);
