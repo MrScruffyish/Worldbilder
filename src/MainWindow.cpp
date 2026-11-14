@@ -5,11 +5,13 @@
 #include <QAction>
 #include <QActionGroup>
 #include <QComboBox>
+#include <QDialogButtonBox>
 #include <QDockWidget>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFont>
+#include <QFormLayout>
 #include <QGraphicsScene>
 #include <QIcon>
 #include <QInputDialog>
@@ -23,6 +25,8 @@
 #include <QMessageBox>
 #include <QPainterPath>
 #include <QPixmap>
+#include <QPlainTextEdit>
+#include <QPushButton>
 #include <QStatusBar>
 #include <QTimer>
 #include <QToolBar>
@@ -129,6 +133,9 @@ void MainWindow::createInfoDock()
     layout->addWidget(m_infoDetails);
     layout->addSpacing(8);
     layout->addWidget(m_infoDescription);
+    layout->addWidget(m_editButton = new QPushButton(tr("Edit..."), widget));
+    m_editButton->setEnabled(false);
+    connect(m_editButton, &QPushButton::clicked, this, &MainWindow::editSelectedFeature);
     layout->addStretch();
 
     m_infoDock->setWidget(widget);
@@ -158,8 +165,13 @@ void MainWindow::selectFeature(MapFeature *feature)
         m_infoTitle->setText(tr("Nothing selected"));
         m_infoDetails->setText(tr("Click a country, region or settlement in Explore mode."));
         m_infoDescription->clear();
+        if (m_editButton)
+            m_editButton->setEnabled(false);
         return;
     }
+
+    if (m_editButton)
+        m_editButton->setEnabled(true);
 
     QString title = feature->name;
     if (title.isEmpty()) {
@@ -220,6 +232,50 @@ void MainWindow::updateVisibility(double scale)
         if (feature && feature->kind() == FeatureKind::Region)
             feature->setVisible(showRegions);
     }
+}
+
+void MainWindow::editSelectedFeature()
+{
+    if (!m_selected)
+        return;
+
+    MapFeature *feature = m_selected;
+    const QString oldName = feature->name;
+
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Edit %1").arg(feature->kindName()));
+    auto *layout = new QFormLayout(&dialog);
+
+    auto *nameEdit = new QLineEdit(feature->name, &dialog);
+    auto *descriptionEdit = new QPlainTextEdit(feature->description, &dialog);
+    descriptionEdit->setMinimumSize(340, 170);
+    layout->addRow(tr("Name:"), nameEdit);
+    layout->addRow(tr("Description:"), descriptionEdit);
+
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    layout->addRow(buttons);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+
+    feature->name = nameEdit->text().trimmed();
+    feature->description = descriptionEdit->toPlainText().trimmed();
+
+    if (feature->kind() == FeatureKind::Country && feature->name != oldName) {
+        for (QGraphicsItem *item : m_scene->items()) {
+            auto *region = dynamic_cast<MapFeature *>(item);
+            if (region && region->kind() == FeatureKind::Region && region->countryName == oldName) {
+                region->countryName = feature->name;
+                region->refresh();
+            }
+        }
+    }
+
+    feature->refresh();
+    selectFeature(feature);
+    statusBar()->showMessage(tr("Updated %1.").arg(feature->kindName().toLower()), 2000);
 }
 
 void MainWindow::saveWorld()

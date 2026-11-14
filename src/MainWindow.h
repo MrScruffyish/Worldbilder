@@ -12,6 +12,7 @@ class QDockWidget;
 class QGraphicsScene;
 class QLabel;
 class QMenu;
+class QPushButton;
 
 class MainWindow : public QMainWindow
 {
@@ -40,6 +41,7 @@ private:
     void selectFeature(MapFeature *feature);
     void onFeatureClicked(MapFeature *feature);
     void updateVisibility(double scale);
+    void editSelectedFeature();
     void saveWorld();
     void saveWorldAs();
     bool writeWorld(const QString &path);
@@ -62,6 +64,7 @@ private:
     QLabel *m_infoTitle = nullptr;
     QLabel *m_infoDetails = nullptr;
     QLabel *m_infoDescription = nullptr;
+    QPushButton *m_editButton = nullptr;
     QMenu *m_viewMenu = nullptr;
     MapFeature *m_selected = nullptr;
     QString m_currentFile;

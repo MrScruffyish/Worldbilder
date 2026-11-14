@@ -146,6 +146,12 @@ void MapFeature::setPoint(const QPointF &point)
     update();
 }
 
+void MapFeature::refresh()
+{
+    prepareGeometryChange();
+    update();
+}
+
 namespace {
 
 QString kindKey(FeatureKind kind)

@@ -66,6 +66,9 @@ public:
     QJsonObject toJson() const;
     static MapFeature *fromJson(const QJsonObject &object);
 
+    /// Recompute bounds after changing name or other painted data.
+    void refresh();
+
 private:
     QFont labelFont() const;
 
