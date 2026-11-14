@@ -412,6 +412,7 @@ bool MainWindow::readWorld(const QString &path)
     }
 
     selectFeature(nullptr);
+    m_view->setTool(m_view->tool());
     m_scene->clear();
     m_worldSize = QSizeF(width, height);
     m_scene->setSceneRect(QRectF(QPointF(0, 0), m_worldSize));
@@ -640,6 +641,7 @@ void MainWindow::chooseNewWorld()
 void MainWindow::newWorld(bool land)
 {
     selectFeature(nullptr);
+    m_view->setTool(m_view->tool());
     m_scene->clear();
     m_scene->setSceneRect(QRectF(QPointF(0, 0), m_worldSize));
     m_view->setWorldSize(m_worldSize);

@@ -297,7 +297,7 @@ QRectF MapFeature::boundingRect() const
     if (m_kind == FeatureKind::Settlement) {
         const QFontMetricsF metrics(labelFont());
         const qreal textWidth = metrics.horizontalAdvance(name);
-        const qreal width = std::max(28.0, textWidth + 34.0);
+        const qreal width = std::max(28.0, textWidth + 38.0);
         return QRectF(m_point.x() - 14, m_point.y() - 16, width, 34);
     }
 
