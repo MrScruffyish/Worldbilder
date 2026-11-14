@@ -3,6 +3,8 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QFontMetricsF>
+#include <QJsonArray>
+#include <QJsonObject>
 #include <QStyleOptionGraphicsItem>
 
 #include <algorithm>
@@ -142,6 +144,54 @@ void MapFeature::setPoint(const QPointF &point)
     prepareGeometryChange();
     m_point = point;
     update();
+}
+
+namespace {
+
+QString kindKey(FeatureKind kind)
+{
+    switch (kind) {
+    case FeatureKind::Land:
+        return QStringLiteral("land");
+    case FeatureKind::Country:
+        return QStringLiteral("country");
+    case FeatureKind::TerrainArea:
+        return QStringLiteral("terrain");
+    case FeatureKind::Region:
+        return QStringLiteral("region");
+    case FeatureKind::Settlement:
+        return QStringLiteral("settlement");
+    }
+    return QStringLiteral("land");
+}
+
+} // namespace
+
+QJsonObject MapFeature::toJson() const
+{
+    QJsonObject object;
+    object.insert(QStringLiteral("kind"), kindKey(m_kind));
+    object.insert(QStringLiteral("name"), name);
+    if (!description.isEmpty())
+        object.insert(QStringLiteral("description"), description);
+    if (!countryName.isEmpty())
+        object.insert(QStringLiteral("country"), countryName);
+    if (color.isValid())
+        object.insert(QStringLiteral("color"), color.name(QColor::HexArgb));
+    if (m_kind == FeatureKind::TerrainArea)
+        object.insert(QStringLiteral("terrain"), static_cast<int>(terrain));
+    if (m_kind == FeatureKind::Settlement) {
+        object.insert(QStringLiteral("settlement"), static_cast<int>(settlement));
+        object.insert(QStringLiteral("point"), QJsonArray{m_point.x(), m_point.y()});
+    }
+
+    QJsonArray points;
+    for (const QPointF &point : m_polygon) {
+        points.append(point.x());
+        points.append(point.y());
+    }
+    object.insert(QStringLiteral("polygon"), points);
+    return object;
 }
 
 QPointF MapFeature::centroid() const

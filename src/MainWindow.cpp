@@ -6,10 +6,16 @@
 #include <QActionGroup>
 #include <QComboBox>
 #include <QDockWidget>
+#include <QFile>
+#include <QFileDialog>
+#include <QFileInfo>
 #include <QFont>
 #include <QGraphicsScene>
 #include <QIcon>
 #include <QInputDialog>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
@@ -216,6 +222,72 @@ void MainWindow::updateVisibility(double scale)
     }
 }
 
+void MainWindow::saveWorld()
+{
+    if (m_currentFile.isEmpty()) {
+        saveWorldAs();
+        return;
+    }
+    if (writeWorld(m_currentFile))
+        statusBar()->showMessage(tr("Saved %1").arg(QFileInfo(m_currentFile).fileName()), 2500);
+}
+
+void MainWindow::saveWorldAs()
+{
+    QString path = QFileDialog::getSaveFileName(this, tr("Save World"),
+                                                m_currentFile.isEmpty() ? QStringLiteral("world.world")
+                                                                        : m_currentFile,
+                                                tr("World files (*.world)"));
+    if (path.isEmpty())
+        return;
+    if (!path.endsWith(QStringLiteral(".world"), Qt::CaseInsensitive))
+        path += QStringLiteral(".world");
+
+    if (writeWorld(path)) {
+        m_currentFile = path;
+        updateTitle();
+        statusBar()->showMessage(tr("Saved %1").arg(QFileInfo(path).fileName()), 2500);
+    }
+}
+
+bool MainWindow::writeWorld(const QString &path)
+{
+    QJsonArray features;
+    const QList<QGraphicsItem *> items = m_scene->items(Qt::AscendingOrder);
+    for (QGraphicsItem *item : items) {
+        if (auto *feature = dynamic_cast<MapFeature *>(item))
+            features.append(feature->toJson());
+    }
+
+    QJsonObject root;
+    root.insert(QStringLiteral("version"), 1);
+    root.insert(QStringLiteral("width"), m_worldSize.width());
+    root.insert(QStringLiteral("height"), m_worldSize.height());
+    root.insert(QStringLiteral("features"), features);
+
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        QMessageBox::warning(this, tr("Save World"),
+                             tr("Could not write %1:\n%2").arg(path, file.errorString()));
+        return false;
+    }
+
+    const QByteArray data = qCompress(QJsonDocument(root).toJson(QJsonDocument::Compact), 9);
+    if (file.write(data) != data.size()) {
+        QMessageBox::warning(this, tr("Save World"),
+                             tr("Could not write %1:\n%2").arg(path, file.errorString()));
+        return false;
+    }
+    return true;
+}
+
+void MainWindow::updateTitle()
+{
+    setWindowTitle(m_currentFile.isEmpty()
+                       ? tr("Worldbilder - Untitled")
+                       : tr("Worldbilder - %1").arg(QFileInfo(m_currentFile).fileName()));
+}
+
 void MainWindow::createActions()
 {
     auto *modeGroup = new QActionGroup(this);
@@ -312,12 +384,23 @@ void MainWindow::createActions()
     newAction->setShortcut(QKeySequence::New);
     connect(newAction, &QAction::triggered, this, &MainWindow::chooseNewWorld);
 
+    auto *saveAction = new QAction(tr("Save"), this);
+    saveAction->setShortcut(QKeySequence::Save);
+    connect(saveAction, &QAction::triggered, this, &MainWindow::saveWorld);
+
+    auto *saveAsAction = new QAction(tr("Save As..."), this);
+    saveAsAction->setShortcut(QKeySequence::SaveAs);
+    connect(saveAsAction, &QAction::triggered, this, &MainWindow::saveWorldAs);
+
     auto *quitAction = new QAction(tr("Quit"), this);
     quitAction->setShortcut(QKeySequence::Quit);
     connect(quitAction, &QAction::triggered, this, &QWidget::close);
 
     auto *fileMenu = menuBar()->addMenu(tr("&File"));
     fileMenu->addAction(newAction);
+    fileMenu->addSeparator();
+    fileMenu->addAction(saveAction);
+    fileMenu->addAction(saveAsAction);
     fileMenu->addSeparator();
     fileMenu->addAction(quitAction);
 
@@ -334,6 +417,7 @@ void MainWindow::createActions()
     auto *toolbar = addToolBar(tr("Main"));
     toolbar->setMovable(false);
     toolbar->addAction(newAction);
+    toolbar->addAction(saveAction);
     toolbar->addSeparator();
     toolbar->addAction(m_exploreAction);
     toolbar->addAction(m_editAction);
@@ -377,7 +461,8 @@ void MainWindow::newWorld(bool land)
         addBigLand();
 
     m_view->fitWorld();
-    setWindowTitle(tr("Worldbilder - Untitled"));
+    m_currentFile.clear();
+    updateTitle();
 }
 
 MapFeature *MainWindow::addBigLand()

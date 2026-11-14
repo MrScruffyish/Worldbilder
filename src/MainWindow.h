@@ -40,6 +40,10 @@ private:
     void selectFeature(MapFeature *feature);
     void onFeatureClicked(MapFeature *feature);
     void updateVisibility(double scale);
+    void saveWorld();
+    void saveWorldAs();
+    bool writeWorld(const QString &path);
+    void updateTitle();
 
     QGraphicsScene *m_scene;
     MapView *m_view;
@@ -58,5 +62,6 @@ private:
     QLabel *m_infoDescription = nullptr;
     QMenu *m_viewMenu = nullptr;
     MapFeature *m_selected = nullptr;
+    QString m_currentFile;
     QSizeF m_worldSize{2000, 1500};
 };

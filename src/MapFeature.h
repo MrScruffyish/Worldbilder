@@ -3,6 +3,7 @@
 #include <QColor>
 #include <QFont>
 #include <QGraphicsItem>
+#include <QJsonObject>
 #include <QPolygonF>
 #include <QString>
 #include <QVector>
@@ -61,6 +62,8 @@ public:
     TerrainType terrain = TerrainType::Grass;
     SettlementType settlement = SettlementType::City;
     bool highlighted = false;
+
+    QJsonObject toJson() const;
 
 private:
     QFont labelFont() const;
