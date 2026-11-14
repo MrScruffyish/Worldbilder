@@ -8,6 +8,7 @@
 class QAction;
 class QGraphicsScene;
 class QLabel;
+class MapFeature;
 
 class MainWindow : public QMainWindow
 {
@@ -19,8 +20,10 @@ public:
 private:
     void createScene();
     void createActions();
-    void createToolBar();
     void setMode(MapView::Mode mode);
+    void chooseNewWorld();
+    void newWorld(bool land);
+    MapFeature *addBigLand();
 
     QGraphicsScene *m_scene;
     MapView *m_view;

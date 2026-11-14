@@ -10,6 +10,8 @@ qt_standard_project_setup()
 
 qt_add_executable(worldbilder
     src/main.cpp
+    src/MapFeature.h
+    src/MapFeature.cpp
     src/MapView.h
     src/MapView.cpp
     src/MainWindow.h

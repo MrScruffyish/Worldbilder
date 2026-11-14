@@ -1,14 +1,20 @@
 #include "MainWindow.h"
 
+#include "MapFeature.h"
+
 #include <QAction>
 #include <QActionGroup>
 #include <QGraphicsScene>
 #include <QLabel>
 #include <QMenu>
 #include <QMenuBar>
+#include <QMessageBox>
+#include <QPainterPath>
 #include <QStatusBar>
 #include <QTimer>
 #include <QToolBar>
+
+#include <QPushButton>
 
 namespace {
 const QColor kSeaColor(0x3d, 0x6a, 0x93);
@@ -35,6 +41,7 @@ MainWindow::MainWindow(QWidget *parent)
         m_zoomLabel->setText(QStringLiteral("%1%").arg(qRound(scale * 100)));
     });
 
+    newWorld(true);
     QTimer::singleShot(0, m_view, &MapView::fitWorld);
 }
 
@@ -68,11 +75,17 @@ void MainWindow::createActions()
     fitAction->setShortcut(Qt::Key_F);
     connect(fitAction, &QAction::triggered, this, [this] { m_view->fitWorld(); });
 
+    auto *newAction = new QAction(tr("New World..."), this);
+    newAction->setShortcut(QKeySequence::New);
+    connect(newAction, &QAction::triggered, this, &MainWindow::chooseNewWorld);
+
     auto *quitAction = new QAction(tr("Quit"), this);
     quitAction->setShortcut(QKeySequence::Quit);
     connect(quitAction, &QAction::triggered, this, &QWidget::close);
 
     auto *fileMenu = menuBar()->addMenu(tr("&File"));
+    fileMenu->addAction(newAction);
+    fileMenu->addSeparator();
     fileMenu->addAction(quitAction);
 
     auto *modeMenu = menuBar()->addMenu(tr("&Mode"));
@@ -84,10 +97,55 @@ void MainWindow::createActions()
 
     auto *toolbar = addToolBar(tr("Main"));
     toolbar->setMovable(false);
+    toolbar->addAction(newAction);
+    toolbar->addSeparator();
     toolbar->addAction(m_exploreAction);
     toolbar->addAction(m_editAction);
     toolbar->addSeparator();
     toolbar->addAction(fitAction);
+}
+
+void MainWindow::chooseNewWorld()
+{
+    QMessageBox box(this);
+    box.setWindowTitle(tr("New World"));
+    box.setText(tr("What should the world start with?"));
+    auto *seaButton = box.addButton(tr("Sea"), QMessageBox::AcceptRole);
+    auto *landButton = box.addButton(tr("Big land area"), QMessageBox::AcceptRole);
+    box.addButton(QMessageBox::Cancel);
+    box.exec();
+
+    if (box.clickedButton() == seaButton)
+        newWorld(false);
+    else if (box.clickedButton() == landButton)
+        newWorld(true);
+}
+
+void MainWindow::newWorld(bool land)
+{
+    m_scene->clear();
+    m_scene->setSceneRect(QRectF(QPointF(0, 0), m_worldSize));
+    m_view->setWorldSize(m_worldSize);
+
+    if (land)
+        addBigLand();
+
+    m_view->fitWorld();
+    setWindowTitle(tr("Worldbilder - Untitled"));
+}
+
+MapFeature *MainWindow::addBigLand()
+{
+    const QRectF area(m_worldSize.width() * 0.06, m_worldSize.height() * 0.06,
+                      m_worldSize.width() * 0.88, m_worldSize.height() * 0.88);
+
+    QPainterPath path;
+    path.addRoundedRect(area, 140, 140);
+
+    auto *land = new MapFeature(FeatureKind::Land);
+    land->setPolygon(path.toFillPolygon());
+    m_scene->addItem(land);
+    return land;
 }
 
 void MainWindow::setMode(MapView::Mode mode)
