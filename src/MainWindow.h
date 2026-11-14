@@ -8,8 +8,10 @@
 
 class QAction;
 class QComboBox;
+class QDockWidget;
 class QGraphicsScene;
 class QLabel;
+class QMenu;
 
 class MainWindow : public QMainWindow
 {
@@ -21,6 +23,7 @@ public:
 private:
     void createScene();
     void createActions();
+    void createInfoDock();
     void setMode(MapView::Mode mode);
     void chooseNewWorld();
     void newWorld(bool land);
@@ -34,6 +37,9 @@ private:
     TerrainType currentTerrain() const;
     int featureCount(FeatureKind kind) const;
     QColor nextCountryColor() const;
+    void selectFeature(MapFeature *feature);
+    void onFeatureClicked(MapFeature *feature);
+    void updateVisibility(double scale);
 
     QGraphicsScene *m_scene;
     MapView *m_view;
@@ -46,5 +52,11 @@ private:
     QAction *m_settlementAction = nullptr;
     QComboBox *m_terrainCombo = nullptr;
     QLabel *m_zoomLabel = nullptr;
+    QDockWidget *m_infoDock = nullptr;
+    QLabel *m_infoTitle = nullptr;
+    QLabel *m_infoDetails = nullptr;
+    QLabel *m_infoDescription = nullptr;
+    QMenu *m_viewMenu = nullptr;
+    MapFeature *m_selected = nullptr;
     QSizeF m_worldSize{2000, 1500};
 };

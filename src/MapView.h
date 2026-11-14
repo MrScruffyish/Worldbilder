@@ -8,6 +8,7 @@ class QGraphicsScene;
 class QKeyEvent;
 class QPainter;
 class QWheelEvent;
+class MapFeature;
 
 /// Full-window map canvas: pan, zoom and (later) feature drawing.
 class MapView : public QGraphicsView
@@ -36,12 +37,16 @@ public:
 
     void setTool(Tool tool);
     Tool tool() const { return m_tool; }
+    double zoomScale() const { return transform().m11(); }
 
     void setWorldSize(const QSizeF &size);
     void fitWorld();
+    void zoomToRect(const QRectF &rect);
+    void zoomBy(double factor);
 
 signals:
     void zoomChanged(double scale);
+    void featureClicked(MapFeature *feature);
     void polygonFinished(MapView::Tool tool, const QPolygonF &polygon);
     void pointChosen(MapView::Tool tool, const QPointF &point);
 
@@ -68,4 +73,6 @@ private:
     QPolygonF m_draft;
     QPointF m_cursor;
     bool m_drafting = false;
+    bool m_clickCandidate = false;
+    QPoint m_pressPos;
 };

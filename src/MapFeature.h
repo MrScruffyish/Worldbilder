@@ -60,6 +60,7 @@ public:
     QColor color;
     TerrainType terrain = TerrainType::Grass;
     SettlementType settlement = SettlementType::City;
+    bool highlighted = false;
 
 private:
     QFont labelFont() const;

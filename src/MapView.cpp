@@ -1,5 +1,7 @@
 #include "MapView.h"
 
+#include "MapFeature.h"
+
 #include <QGraphicsScene>
 #include <QKeyEvent>
 #include <QLineF>
@@ -48,6 +50,25 @@ void MapView::fitWorld()
 {
     fitInView(scene()->sceneRect(), Qt::KeepAspectRatio);
     emitZoom();
+}
+
+void MapView::zoomToRect(const QRectF &rect)
+{
+    if (!rect.isValid() || rect.isEmpty())
+        return;
+
+    fitInView(rect.adjusted(-24, -24, 24, 24), Qt::KeepAspectRatio);
+    if (transform().m11() > 3.0) {
+        const double factor = 3.0 / transform().m11();
+        scale(factor, factor);
+        centerOn(rect.center());
+    }
+    emitZoom();
+}
+
+void MapView::zoomBy(double factor)
+{
+    applyZoom(factor, QPoint(viewport()->width() / 2, viewport()->height() / 2));
 }
 
 void MapView::updateCursor()
@@ -100,9 +121,13 @@ void MapView::mousePressEvent(QMouseEvent *event)
         return;
     }
 
+    if (m_mode == Mode::Explore && event->button() == Qt::LeftButton) {
+        m_clickCandidate = true;
+        m_pressPos = event->pos();
+    }
+
     if (m_mode == Mode::Edit && m_tool != Tool::None) {
-        const QPointF scenePos = mapToScene(event->pos());
-        if (event->button() == Qt::LeftButton) {
+        const QPointF scenePos = mapToScene(event->pos());        if (event->button() == Qt::LeftButton) {
             if (m_tool == Tool::Settlement) {
                 emit pointChosen(m_tool, scenePos);
             } else {
@@ -238,5 +263,19 @@ void MapView::mouseReleaseEvent(QMouseEvent *event)
         event->accept();
         return;
     }
+
+    if (m_mode == Mode::Explore && event->button() == Qt::LeftButton && m_clickCandidate) {
+        m_clickCandidate = false;
+        if ((event->pos() - m_pressPos).manhattanLength() <= 4) {
+            MapFeature *feature = nullptr;
+            const QList<QGraphicsItem *> items = scene()->items(mapToScene(event->pos()));
+            for (QGraphicsItem *item : items) {
+                if ((feature = dynamic_cast<MapFeature *>(item)))
+                    break;
+            }
+            emit featureClicked(feature);
+        }
+    }
+
     QGraphicsView::mouseReleaseEvent(event);
 }

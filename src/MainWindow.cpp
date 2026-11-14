@@ -5,6 +5,8 @@
 #include <QAction>
 #include <QActionGroup>
 #include <QComboBox>
+#include <QDockWidget>
+#include <QFont>
 #include <QGraphicsScene>
 #include <QIcon>
 #include <QInputDialog>
@@ -18,6 +20,8 @@
 #include <QStatusBar>
 #include <QTimer>
 #include <QToolBar>
+#include <QVBoxLayout>
+#include <QWidget>
 
 #include <QPushButton>
 
@@ -48,9 +52,13 @@ MainWindow::MainWindow(QWidget *parent)
     statusBar()->addPermanentWidget(m_zoomLabel);
     statusBar()->showMessage(tr("Explore: drag to pan, wheel to zoom."));
 
+    createInfoDock();
+
     connect(m_view, &MapView::zoomChanged, this, [this](double scale) {
         m_zoomLabel->setText(QStringLiteral("%1%").arg(qRound(scale * 100)));
     });
+    connect(m_view, &MapView::zoomChanged, this, &MainWindow::updateVisibility);
+    connect(m_view, &MapView::featureClicked, this, &MainWindow::onFeatureClicked);
 
     connect(m_view, &MapView::polygonFinished, this, [this](MapView::Tool tool, const QPolygonF &polygon) {
         switch (tool) {
@@ -85,6 +93,127 @@ void MainWindow::createScene()
     m_scene = new QGraphicsScene(this);
     m_scene->setBackgroundBrush(kSeaColor);
     m_scene->setSceneRect(QRectF(QPointF(0, 0), m_worldSize));
+}
+
+void MainWindow::createInfoDock()
+{
+    m_infoDock = new QDockWidget(tr("Info"), this);
+    m_infoDock->setObjectName(QStringLiteral("infoDock"));
+    m_infoDock->setMinimumWidth(250);
+
+    auto *widget = new QWidget(m_infoDock);
+    auto *layout = new QVBoxLayout(widget);
+    layout->setContentsMargins(10, 10, 10, 10);
+
+    m_infoTitle = new QLabel(tr("Nothing selected"), widget);
+    QFont titleFont = m_infoTitle->font();
+    titleFont.setBold(true);
+    titleFont.setPointSize(titleFont.pointSize() + 3);
+    m_infoTitle->setFont(titleFont);
+    m_infoTitle->setWordWrap(true);
+
+    m_infoDetails = new QLabel(tr("Click a country, region or settlement in Explore mode."), widget);
+    m_infoDetails->setWordWrap(true);
+
+    m_infoDescription = new QLabel(widget);
+    m_infoDescription->setWordWrap(true);
+    m_infoDescription->setAlignment(Qt::AlignTop | Qt::AlignLeft);
+
+    layout->addWidget(m_infoTitle);
+    layout->addWidget(m_infoDetails);
+    layout->addSpacing(8);
+    layout->addWidget(m_infoDescription);
+    layout->addStretch();
+
+    m_infoDock->setWidget(widget);
+    addDockWidget(Qt::RightDockWidgetArea, m_infoDock);
+
+    if (m_viewMenu) {
+        m_viewMenu->addSeparator();
+        m_viewMenu->addAction(m_infoDock->toggleViewAction());
+    }
+}
+
+void MainWindow::selectFeature(MapFeature *feature)
+{
+    if (m_selected != feature) {
+        if (m_selected) {
+            m_selected->highlighted = false;
+            m_selected->update();
+        }
+        m_selected = feature;
+        if (m_selected) {
+            m_selected->highlighted = true;
+            m_selected->update();
+        }
+    }
+
+    if (!feature) {
+        m_infoTitle->setText(tr("Nothing selected"));
+        m_infoDetails->setText(tr("Click a country, region or settlement in Explore mode."));
+        m_infoDescription->clear();
+        return;
+    }
+
+    QString title = feature->name;
+    if (title.isEmpty()) {
+        title = feature->kind() == FeatureKind::TerrainArea
+                    ? tr("%1 area").arg(terrainName(feature->terrain))
+                    : feature->kindName();
+    }
+    m_infoTitle->setText(title);
+
+    switch (feature->kind()) {
+    case FeatureKind::Country:
+        m_infoDetails->setText(tr("Country"));
+        break;
+    case FeatureKind::Region:
+        m_infoDetails->setText(tr("Region in %1").arg(feature->countryName));
+        break;
+    case FeatureKind::Settlement:
+        m_infoDetails->setText(settlementName(feature->settlement));
+        break;
+    case FeatureKind::TerrainArea:
+        m_infoDetails->setText(tr("Terrain: %1").arg(terrainName(feature->terrain)));
+        break;
+    case FeatureKind::Land:
+        m_infoDetails->setText(tr("Land"));
+        break;
+    }
+
+    m_infoDescription->setText(feature->description.isEmpty() ? tr("No description.")
+                                                              : feature->description);
+}
+
+void MainWindow::onFeatureClicked(MapFeature *feature)
+{
+    selectFeature(feature);
+    if (!feature)
+        return;
+
+    switch (feature->kind()) {
+    case FeatureKind::Country:
+    case FeatureKind::Region:
+        m_view->zoomToRect(feature->polygon().boundingRect());
+        break;
+    case FeatureKind::Settlement: {
+        const QPointF point = feature->point();
+        m_view->zoomToRect(QRectF(point.x() - 180, point.y() - 140, 360, 280));
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+void MainWindow::updateVisibility(double scale)
+{
+    const bool showRegions = m_view->mode() == MapView::Mode::Edit || scale >= 0.5;
+    for (QGraphicsItem *item : m_scene->items()) {
+        auto *feature = dynamic_cast<MapFeature *>(item);
+        if (feature && feature->kind() == FeatureKind::Region)
+            feature->setVisible(showRegions);
+    }
 }
 
 void MainWindow::createActions()
@@ -171,6 +300,14 @@ void MainWindow::createActions()
     fitAction->setShortcut(Qt::Key_F);
     connect(fitAction, &QAction::triggered, this, [this] { m_view->fitWorld(); });
 
+    auto *zoomInAction = new QAction(tr("Zoom In"), this);
+    zoomInAction->setShortcut(QKeySequence::ZoomIn);
+    connect(zoomInAction, &QAction::triggered, this, [this] { m_view->zoomBy(1.25); });
+
+    auto *zoomOutAction = new QAction(tr("Zoom Out"), this);
+    zoomOutAction->setShortcut(QKeySequence::ZoomOut);
+    connect(zoomOutAction, &QAction::triggered, this, [this] { m_view->zoomBy(0.8); });
+
     auto *newAction = new QAction(tr("New World..."), this);
     newAction->setShortcut(QKeySequence::New);
     connect(newAction, &QAction::triggered, this, &MainWindow::chooseNewWorld);
@@ -189,6 +326,9 @@ void MainWindow::createActions()
     modeMenu->addAction(m_editAction);
 
     auto *viewMenu = menuBar()->addMenu(tr("&View"));
+    m_viewMenu = viewMenu;
+    viewMenu->addAction(zoomInAction);
+    viewMenu->addAction(zoomOutAction);
     viewMenu->addAction(fitAction);
 
     auto *toolbar = addToolBar(tr("Main"));
@@ -205,7 +345,9 @@ void MainWindow::createActions()
     toolbar->addAction(m_settlementAction);
     toolbar->addWidget(m_terrainCombo);
     toolbar->addSeparator();
+    toolbar->addAction(zoomOutAction);
     toolbar->addAction(fitAction);
+    toolbar->addAction(zoomInAction);
 }
 
 void MainWindow::chooseNewWorld()
@@ -226,6 +368,7 @@ void MainWindow::chooseNewWorld()
 
 void MainWindow::newWorld(bool land)
 {
+    selectFeature(nullptr);
     m_scene->clear();
     m_scene->setSceneRect(QRectF(QPointF(0, 0), m_worldSize));
     m_view->setWorldSize(m_worldSize);
@@ -388,6 +531,7 @@ QColor MainWindow::nextCountryColor() const
 void MainWindow::setMode(MapView::Mode mode)
 {
     m_view->setMode(mode);
+    updateVisibility(m_view->zoomScale());
     if (mode == MapView::Mode::Explore) {
         m_exploreAction->setChecked(true);
         statusBar()->showMessage(tr("Explore: drag to pan, wheel to zoom."));

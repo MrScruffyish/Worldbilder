@@ -299,4 +299,13 @@ void MapFeature::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWid
         break;
     }
     }
+
+    if (highlighted) {
+        painter->setBrush(Qt::NoBrush);
+        painter->setPen(QPen(QColor(0xff, 0x9f, 0x1c), 4.0));
+        if (m_kind == FeatureKind::Settlement)
+            painter->drawEllipse(m_point, 13, 13);
+        else
+            painter->drawPolygon(m_polygon);
+    }
 }
