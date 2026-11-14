@@ -23,9 +23,16 @@ enum class TerrainType {
     Swamp,
 };
 
+enum class SettlementType {
+    City,
+    Town,
+    Village,
+};
+
 QString terrainName(TerrainType terrain);
 QColor terrainColor(TerrainType terrain);
 const QVector<TerrainType> &terrainTypes();
+QString settlementName(SettlementType type);
 
 /// One map object. A single class keeps drawing and saving simple.
 class MapFeature : public QGraphicsItem
@@ -38,6 +45,8 @@ public:
 
     QPolygonF polygon() const { return m_polygon; }
     void setPolygon(const QPolygonF &polygon);
+    QPointF point() const { return m_point; }
+    void setPoint(const QPointF &point);
     QPointF centroid() const;
 
     QRectF boundingRect() const override;
@@ -49,8 +58,10 @@ public:
     QString countryName;
     QColor color;
     TerrainType terrain = TerrainType::Grass;
+    SettlementType settlement = SettlementType::City;
 
 private:
     FeatureKind m_kind;
     QPolygonF m_polygon;
+    QPointF m_point;
 };

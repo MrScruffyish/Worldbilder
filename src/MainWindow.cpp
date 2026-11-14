@@ -71,6 +71,11 @@ MainWindow::MainWindow(QWidget *parent)
         }
     });
 
+    connect(m_view, &MapView::pointChosen, this, [this](MapView::Tool tool, const QPointF &point) {
+        if (tool == MapView::Tool::Settlement)
+            addSettlement(point);
+    });
+
     newWorld(true);
     QTimer::singleShot(0, m_view, &MapView::fitWorld);
 }
@@ -144,6 +149,16 @@ void MainWindow::createActions()
     });
     toolGroup->addAction(m_regionAction);
 
+    m_settlementAction = new QAction(tr("Settlement"), this);
+    m_settlementAction->setCheckable(true);
+    m_settlementAction->setShortcut(Qt::Key_S);
+    connect(m_settlementAction, &QAction::triggered, this, [this] {
+        setMode(MapView::Mode::Edit);
+        m_view->setTool(MapView::Tool::Settlement);
+        statusBar()->showMessage(tr("Click on the map to place a city, town or village."));
+    });
+    toolGroup->addAction(m_settlementAction);
+
     m_terrainCombo = new QComboBox(this);
     m_terrainCombo->setToolTip(tr("Terrain painted by the terrain tool"));
     for (TerrainType terrain : terrainTypes()) {
@@ -187,6 +202,7 @@ void MainWindow::createActions()
     toolbar->addAction(m_countryAction);
     toolbar->addAction(m_terrainAction);
     toolbar->addAction(m_regionAction);
+    toolbar->addAction(m_settlementAction);
     toolbar->addWidget(m_terrainCombo);
     toolbar->addSeparator();
     toolbar->addAction(fitAction);
@@ -312,6 +328,45 @@ MapFeature *MainWindow::findCountryAt(const QPointF &point) const
         }
     }
     return nullptr;
+}
+
+void MainWindow::addSettlement(const QPointF &point)
+{
+    QStringList options;
+    for (SettlementType type : {SettlementType::City, SettlementType::Town, SettlementType::Village})
+        options.append(settlementName(type));
+
+    bool ok = false;
+    const QString typeName = QInputDialog::getItem(this, tr("New Settlement"), tr("Type:"), options, 0,
+                                                   false, &ok);
+    if (!ok)
+        return;
+
+    SettlementType type = SettlementType::City;
+    for (SettlementType candidate : {SettlementType::City, SettlementType::Town, SettlementType::Village}) {
+        if (settlementName(candidate) == typeName)
+            type = candidate;
+    }
+
+    int sameType = 0;
+    for (QGraphicsItem *item : m_scene->items()) {
+        auto *feature = dynamic_cast<MapFeature *>(item);
+        if (feature && feature->kind() == FeatureKind::Settlement && feature->settlement == type)
+            ++sameType;
+    }
+
+    const QString name = QInputDialog::getText(this, tr("New Settlement"), tr("Name:"), QLineEdit::Normal,
+                                               QStringLiteral("%1 %2").arg(typeName).arg(sameType + 1), &ok)
+                             .trimmed();
+    if (!ok || name.isEmpty())
+        return;
+
+    auto *settlement = new MapFeature(FeatureKind::Settlement);
+    settlement->setPoint(point);
+    settlement->settlement = type;
+    settlement->name = name;
+    m_scene->addItem(settlement);
+    statusBar()->showMessage(tr("%1 %2 placed.").arg(typeName, name), 2000);
 }
 
 int MainWindow::featureCount(FeatureKind kind) const

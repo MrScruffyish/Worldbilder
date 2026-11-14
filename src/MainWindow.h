@@ -29,6 +29,7 @@ private:
     void addCountry(const QPolygonF &polygon);
     void addTerrainArea(const QPolygonF &polygon);
     void addRegion(const QPolygonF &polygon);
+    void addSettlement(const QPointF &point);
     MapFeature *findCountryAt(const QPointF &point) const;
     TerrainType currentTerrain() const;
     int featureCount(FeatureKind kind) const;
@@ -42,6 +43,7 @@ private:
     QAction *m_countryAction = nullptr;
     QAction *m_terrainAction = nullptr;
     QAction *m_regionAction = nullptr;
+    QAction *m_settlementAction = nullptr;
     QComboBox *m_terrainCombo = nullptr;
     QLabel *m_zoomLabel = nullptr;
     QSizeF m_worldSize{2000, 1500};

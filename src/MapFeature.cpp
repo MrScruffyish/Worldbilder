@@ -51,6 +51,19 @@ const QVector<TerrainType> &terrainTypes()
     return types;
 }
 
+QString settlementName(SettlementType type)
+{
+    switch (type) {
+    case SettlementType::City:
+        return QStringLiteral("City");
+    case SettlementType::Town:
+        return QStringLiteral("Town");
+    case SettlementType::Village:
+        return QStringLiteral("Village");
+    }
+    return QStringLiteral("Settlement");
+}
+
 MapFeature::MapFeature(FeatureKind kind, QGraphicsItem *parent)
     : QGraphicsItem(parent)
     , m_kind(kind)
@@ -98,8 +111,17 @@ void MapFeature::setPolygon(const QPolygonF &polygon)
     update();
 }
 
+void MapFeature::setPoint(const QPointF &point)
+{
+    prepareGeometryChange();
+    m_point = point;
+    update();
+}
+
 QPointF MapFeature::centroid() const
 {
+    if (m_kind == FeatureKind::Settlement)
+        return m_point;
     if (m_polygon.isEmpty())
         return QPointF();
 
@@ -126,13 +148,17 @@ QPointF MapFeature::centroid() const
 QRectF MapFeature::boundingRect() const
 {
     if (m_kind == FeatureKind::Settlement)
-        return QRectF(-12, -12, 24, 24);
+        return QRectF(m_point.x() - 14, m_point.y() - 16, 160, 34);
     return m_polygon.boundingRect().adjusted(-4, -4, 4, 4);
 }
 
 QPainterPath MapFeature::shape() const
 {
     QPainterPath path;
+    if (m_kind == FeatureKind::Settlement) {
+        path.addEllipse(m_point, 12, 12);
+        return path;
+    }
     path.addPolygon(m_polygon);
     path.closeSubpath();
     return path;
@@ -176,7 +202,29 @@ void MapFeature::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWid
         painter->drawPolygon(m_polygon);
         break;
     }
-    case FeatureKind::Settlement:
+    case FeatureKind::Settlement: {
+        painter->save();
+        painter->translate(m_point);
+
+        QColor fill(0x6a, 0x8f, 0x4a);
+        qreal radius = 5.0;
+        if (settlement == SettlementType::City) {
+            fill = QColor(0xc9, 0x4a, 0x3f);
+            radius = 9.0;
+        } else if (settlement == SettlementType::Town) {
+            fill = QColor(0xd9, 0x8e, 0x2b);
+            radius = 7.0;
+        }
+
+        painter->setPen(QPen(Qt::white, 2.2));
+        painter->setBrush(fill);
+        if (settlement == SettlementType::Town) {
+            painter->drawRect(QRectF(-radius, -radius, radius * 2, radius * 2));
+        } else {
+            painter->drawEllipse(QPointF(0, 0), radius, radius);
+        }
+        painter->restore();
         break;
+    }
     }
 }
