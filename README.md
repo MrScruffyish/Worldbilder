@@ -41,7 +41,9 @@ Tools and shortcuts:
 | River | `V` | Click points; roads crossing a river are drawn with bridges. |
 
 The **Info** dock shows the selected feature. **Edit...** changes its name and
-description; renaming a country updates its regions.
+description; renaming a country updates its regions. Visiting a settlement in
+Explore mode adds a line to the **Travel Log** dock; `File > Export Travel
+Log...` or the dock's **Export...** button saves it as a text file.
 
 `File > New World...` starts from sea or a big land area. `File > Resize
 World...` extends the map; features stay where they are. `Generate > Random

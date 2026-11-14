@@ -14,6 +14,7 @@ class QDockWidget;
 class QGraphicsScene;
 class QLabel;
 class QMenu;
+class QPlainTextEdit;
 class QPushButton;
 
 class MainWindow : public QMainWindow
@@ -27,6 +28,9 @@ private:
     void createScene();
     void createActions();
     void createInfoDock();
+    void createLogDock();
+    void logTravel(const QString &entry);
+    void exportTravelLog();
     void setMode(MapView::Mode mode);
     void chooseNewWorld();
     void newWorld(bool land);
@@ -94,6 +98,8 @@ private:
     QLabel *m_infoDetails = nullptr;
     QLabel *m_infoDescription = nullptr;
     QPushButton *m_editButton = nullptr;
+    QDockWidget *m_logDock = nullptr;
+    QPlainTextEdit *m_logView = nullptr;
     QMenu *m_viewMenu = nullptr;
     MapFeature *m_selected = nullptr;
     QString m_currentFile;

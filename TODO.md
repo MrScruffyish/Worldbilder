@@ -1,7 +1,6 @@
 Overall rule: Do everything very simple at first, no backwards compatability, commit with terse messages when one task is done. Avoid tests for now.
 
 # TODO
-23. When you explore. Write a travel log in a window (exportable/saveable as test)
 24. When exploring in a town, you can click on another town/region/something distinct to travel there. Calculate the travel distance, weighted with terrain and update log, simple. like "walked 24 days, came to town XAA"
 
 
@@ -31,3 +30,4 @@ Add a tool for smoothing the map (i.e. a little bit more smoth lines but still w
 20. Add a dialog to add stuff "with buttons: add X random item Y " for each  sensible Y. so one can quickly generate a map.
 21. Add roads (either freehand draw or polygon) and take in to account terrain. some road can go in hills, some not has to make detour. 
 22. Rivers would be nice to draw. They are also passible by bridges.
+23. When you explore. Write a travel log in a window (exportable/saveable as test)

@@ -68,6 +68,7 @@ MainWindow::MainWindow(QWidget *parent)
     statusBar()->showMessage(tr("Explore: drag to pan, wheel to zoom."));
 
     createInfoDock();
+    createLogDock();
 
     connect(m_view, &MapView::zoomChanged, this, [this](double scale) {
         m_zoomLabel->setText(QStringLiteral("%1%").arg(qRound(scale * 100)));
@@ -158,6 +159,62 @@ void MainWindow::createInfoDock()
     }
 }
 
+void MainWindow::createLogDock()
+{
+    m_logDock = new QDockWidget(tr("Travel Log"), this);
+    m_logDock->setObjectName(QStringLiteral("travelLogDock"));
+    m_logDock->setMinimumWidth(250);
+
+    auto *widget = new QWidget(m_logDock);
+    auto *layout = new QVBoxLayout(widget);
+    layout->setContentsMargins(6, 6, 6, 6);
+
+    m_logView = new QPlainTextEdit(widget);
+    m_logView->setReadOnly(true);
+    m_logView->setPlaceholderText(tr("Travels and visits appear here."));
+    layout->addWidget(m_logView);
+
+    auto *exportButton = new QPushButton(tr("Export..."), widget);
+    connect(exportButton, &QPushButton::clicked, this, &MainWindow::exportTravelLog);
+    layout->addWidget(exportButton);
+
+    m_logDock->setWidget(widget);
+    addDockWidget(Qt::RightDockWidgetArea, m_logDock);
+
+    if (m_viewMenu)
+        m_viewMenu->addAction(m_logDock->toggleViewAction());
+}
+
+void MainWindow::logTravel(const QString &entry)
+{
+    if (!m_logView || entry.isEmpty())
+        return;
+    m_logView->appendPlainText(entry);
+}
+
+void MainWindow::exportTravelLog()
+{
+    if (!m_logView)
+        return;
+
+    QString path = QFileDialog::getSaveFileName(this, tr("Export Travel Log"),
+                                                QStringLiteral("travel-log.txt"),
+                                                tr("Text files (*.txt)"));
+    if (path.isEmpty())
+        return;
+    if (!path.endsWith(QStringLiteral(".txt"), Qt::CaseInsensitive))
+        path += QStringLiteral(".txt");
+
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QMessageBox::warning(this, tr("Export Travel Log"),
+                             tr("Could not write %1.").arg(path));
+        return;
+    }
+    file.write(m_logView->toPlainText().toUtf8());
+    statusBar()->showMessage(tr("Travel log exported to %1.").arg(QFileInfo(path).fileName()), 2500);
+}
+
 void MainWindow::selectFeature(MapFeature *feature)
 {
     if (m_selected != feature) {
@@ -231,6 +288,11 @@ void MainWindow::onFeatureClicked(MapFeature *feature)
     selectFeature(feature);
     if (!feature)
         return;
+
+    if (feature->kind() == FeatureKind::Settlement) {
+        const QString title = feature->name.isEmpty() ? feature->kindName() : feature->name;
+        logTravel(tr("Visited %1 (%2).").arg(title, settlementName(feature->settlement)));
+    }
 
     switch (feature->kind()) {
     case FeatureKind::Country:
@@ -907,6 +969,9 @@ void MainWindow::createActions()
     openAction->setShortcut(QKeySequence::Open);
     connect(openAction, &QAction::triggered, this, &MainWindow::loadWorld);
 
+    auto *exportLogAction = new QAction(tr("Export Travel Log..."), this);
+    connect(exportLogAction, &QAction::triggered, this, &MainWindow::exportTravelLog);
+
     auto *resizeAction = new QAction(tr("Resize World..."), this);
     connect(resizeAction, &QAction::triggered, this, &MainWindow::resizeWorld);
 
@@ -923,6 +988,8 @@ void MainWindow::createActions()
     fileMenu->addSeparator();
     fileMenu->addAction(saveAction);
     fileMenu->addAction(saveAsAction);
+    fileMenu->addSeparator();
+    fileMenu->addAction(exportLogAction);
     fileMenu->addSeparator();
     fileMenu->addAction(resizeAction);
     fileMenu->addSeparator();
