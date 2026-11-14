@@ -1,7 +1,6 @@
 Overall rule: Do everything very simple at first, no backwards compatability, commit with terse messages when one task is done. Avoid tests for now.
 
 # TODO
-14. the program should also be able to work with .json files (when saving first time, let choose between .world or .json)
 
 # DONE
 1. A Qt6 program where you can travel on the map (2d map) or create a map (2d map).
@@ -17,3 +16,4 @@ Overall rule: Do everything very simple at first, no backwards compatability, co
 11. You can load a world. Ignore backwards compatability for now and just write what the problem was.
 12. You can write descriptions for items on the map.
 13. You can resize the map as needed (ie make larger to put more on it.)
+14. the program should also be able to work with .json files (when saving first time, let choose between .world or .json)

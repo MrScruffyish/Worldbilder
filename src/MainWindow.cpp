@@ -292,14 +292,18 @@ void MainWindow::saveWorld()
 
 void MainWindow::saveWorldAs()
 {
-    QString path = QFileDialog::getSaveFileName(this, tr("Save World"),
-                                                m_currentFile.isEmpty() ? QStringLiteral("world.world")
-                                                                        : m_currentFile,
-                                                tr("World files (*.world)"));
+    const QString start = m_currentFile.isEmpty() ? QStringLiteral("world.world") : m_currentFile;
+    QString selectedFilter;
+    QString path = QFileDialog::getSaveFileName(this, tr("Save World"), start,
+                                                tr("World files (*.world);;JSON files (*.json)"),
+                                                &selectedFilter);
     if (path.isEmpty())
         return;
-    if (!path.endsWith(QStringLiteral(".world"), Qt::CaseInsensitive))
-        path += QStringLiteral(".world");
+    if (!path.endsWith(QStringLiteral(".world"), Qt::CaseInsensitive)
+        && !path.endsWith(QStringLiteral(".json"), Qt::CaseInsensitive)) {
+        path += selectedFilter.contains(QStringLiteral("JSON")) ? QStringLiteral(".json")
+                                                                : QStringLiteral(".world");
+    }
 
     if (writeWorld(path)) {
         m_currentFile = path;
@@ -330,7 +334,12 @@ bool MainWindow::writeWorld(const QString &path)
         return false;
     }
 
-    const QByteArray data = qCompress(QJsonDocument(root).toJson(QJsonDocument::Compact), 9);
+    const QByteArray json = QJsonDocument(root).toJson(
+        path.endsWith(QStringLiteral(".json"), Qt::CaseInsensitive) ? QJsonDocument::Indented
+                                                                   : QJsonDocument::Compact);
+    const QByteArray data = path.endsWith(QStringLiteral(".json"), Qt::CaseInsensitive)
+                                ? json
+                                : qCompress(json, 9);
     if (file.write(data) != data.size()) {
         QMessageBox::warning(this, tr("Save World"),
                              tr("Could not write %1:\n%2").arg(path, file.errorString()));
@@ -342,7 +351,7 @@ bool MainWindow::writeWorld(const QString &path)
 void MainWindow::loadWorld()
 {
     const QString path = QFileDialog::getOpenFileName(this, tr("Open World"), m_currentFile,
-                                                      tr("World files (*.world)"));
+                                                      tr("World files (*.world *.json);;All files (*)"));
     if (path.isEmpty())
         return;
 
@@ -362,10 +371,13 @@ bool MainWindow::readWorld(const QString &path)
         return false;
     }
 
-    const QByteArray json = qUncompress(file.readAll());
+    const QByteArray data = file.readAll();
+    const QByteArray json = path.endsWith(QStringLiteral(".json"), Qt::CaseInsensitive)
+                                ? data
+                                : qUncompress(data);
     if (json.isEmpty()) {
         QMessageBox::warning(this, tr("Open World"),
-                             tr("Could not read %1:\nThe file is not a compressed world file.").arg(path));
+                             tr("Could not read %1:\nThe file is empty or not a world file.").arg(path));
         return false;
     }
 
