@@ -5,6 +5,7 @@
 #include <QAction>
 #include <QActionGroup>
 #include <QComboBox>
+#include <QDialog>
 #include <QDialogButtonBox>
 #include <QDockWidget>
 #include <QFile>
@@ -27,6 +28,7 @@
 #include <QPixmap>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QSpinBox>
 #include <QStatusBar>
 #include <QTimer>
 #include <QToolBar>
@@ -408,6 +410,41 @@ bool MainWindow::readWorld(const QString &path)
     return true;
 }
 
+void MainWindow::resizeWorld()
+{
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Resize World"));
+    auto *layout = new QFormLayout(&dialog);
+
+    auto *widthSpin = new QSpinBox(&dialog);
+    widthSpin->setRange(200, 50000);
+    widthSpin->setSuffix(tr(" units"));
+    widthSpin->setValue(qRound(m_worldSize.width()));
+
+    auto *heightSpin = new QSpinBox(&dialog);
+    heightSpin->setRange(200, 50000);
+    heightSpin->setSuffix(tr(" units"));
+    heightSpin->setValue(qRound(m_worldSize.height()));
+
+    layout->addRow(tr("Width:"), widthSpin);
+    layout->addRow(tr("Height:"), heightSpin);
+
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    layout->addRow(buttons);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+
+    m_worldSize = QSizeF(widthSpin->value(), heightSpin->value());
+    m_scene->setSceneRect(QRectF(QPointF(0, 0), m_worldSize));
+    m_view->setWorldSize(m_worldSize);
+    m_view->fitWorld();
+    statusBar()->showMessage(tr("World resized to %1 x %2.").arg(widthSpin->value()).arg(heightSpin->value()),
+                             2500);
+}
+
 void MainWindow::updateTitle()
 {
     setWindowTitle(m_currentFile.isEmpty()
@@ -523,6 +560,9 @@ void MainWindow::createActions()
     openAction->setShortcut(QKeySequence::Open);
     connect(openAction, &QAction::triggered, this, &MainWindow::loadWorld);
 
+    auto *resizeAction = new QAction(tr("Resize World..."), this);
+    connect(resizeAction, &QAction::triggered, this, &MainWindow::resizeWorld);
+
     auto *quitAction = new QAction(tr("Quit"), this);
     quitAction->setShortcut(QKeySequence::Quit);
     connect(quitAction, &QAction::triggered, this, &QWidget::close);
@@ -533,6 +573,8 @@ void MainWindow::createActions()
     fileMenu->addSeparator();
     fileMenu->addAction(saveAction);
     fileMenu->addAction(saveAsAction);
+    fileMenu->addSeparator();
+    fileMenu->addAction(resizeAction);
     fileMenu->addSeparator();
     fileMenu->addAction(quitAction);
 
