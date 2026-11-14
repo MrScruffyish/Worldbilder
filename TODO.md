@@ -1,7 +1,6 @@
 Overall rule: Do everything very simple at first, no backwards compatability, commit with terse messages when one task is done. Avoid tests for now.
 
 # TODO
-4. You can create countries.
 5. You can place different terrain in areas.
 6. You can subdivide countries into regions.
 7. You can place cities, towns, villages on map
@@ -17,3 +16,4 @@ Overall rule: Do everything very simple at first, no backwards compatability, co
 1. A Qt6 program where you can travel on the map (2d map) or create a map (2d map).
 2. Start with either sea or big land area.
 3. You should be able to draw a map (like drawing a polygon or mixed with freehand (better use controlpoints?))
+4. You can create countries.

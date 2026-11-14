@@ -5,7 +5,9 @@
 #include <QAction>
 #include <QActionGroup>
 #include <QGraphicsScene>
+#include <QInputDialog>
 #include <QLabel>
+#include <QLineEdit>
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -18,6 +20,12 @@
 
 namespace {
 const QColor kSeaColor(0x3d, 0x6a, 0x93);
+
+const QColor kCountryColors[] = {
+    QColor(0xd9, 0x6b, 0x5e), QColor(0x4f, 0x9d, 0xd1), QColor(0xe0, 0xb4, 0x4f),
+    QColor(0x8a, 0x6f, 0xc0), QColor(0x5a, 0xa8, 0x86), QColor(0xd1, 0x7f, 0xb0),
+    QColor(0xc2, 0x7c, 0x42), QColor(0x6f, 0x93, 0x4f),
+};
 }
 
 MainWindow::MainWindow(QWidget *parent)
@@ -42,8 +50,16 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     connect(m_view, &MapView::polygonFinished, this, [this](MapView::Tool tool, const QPolygonF &polygon) {
-        if (tool == MapView::Tool::Land)
+        switch (tool) {
+        case MapView::Tool::Land:
             addLand(polygon);
+            break;
+        case MapView::Tool::Country:
+            addCountry(polygon);
+            break;
+        default:
+            break;
+        }
     });
 
     newWorld(true);
@@ -85,6 +101,20 @@ void MainWindow::createActions()
         statusBar()->showMessage(tr("Draw land: click to add points, double-click or Enter to finish, Esc to cancel."));
     });
 
+    m_countryAction = new QAction(tr("Country"), this);
+    m_countryAction->setCheckable(true);
+    m_countryAction->setShortcut(Qt::Key_C);
+    connect(m_countryAction, &QAction::triggered, this, [this] {
+        setMode(MapView::Mode::Edit);
+        m_view->setTool(MapView::Tool::Country);
+        statusBar()->showMessage(tr("Draw a country: click to add points, double-click or Enter to finish."));
+    });
+
+    auto *toolGroup = new QActionGroup(this);
+    toolGroup->setExclusive(true);
+    toolGroup->addAction(m_landAction);
+    toolGroup->addAction(m_countryAction);
+
     auto *fitAction = new QAction(tr("Fit World"), this);
     fitAction->setShortcut(Qt::Key_F);
     connect(fitAction, &QAction::triggered, this, [this] { m_view->fitWorld(); });
@@ -117,6 +147,7 @@ void MainWindow::createActions()
     toolbar->addAction(m_editAction);
     toolbar->addSeparator();
     toolbar->addAction(m_landAction);
+    toolbar->addAction(m_countryAction);
     toolbar->addSeparator();
     toolbar->addAction(fitAction);
 }
@@ -170,6 +201,40 @@ void MainWindow::addLand(const QPolygonF &polygon)
     land->setPolygon(polygon);
     m_scene->addItem(land);
     statusBar()->showMessage(tr("Land added."), 2000);
+}
+
+void MainWindow::addCountry(const QPolygonF &polygon)
+{
+    bool ok = false;
+    const QString name = QInputDialog::getText(this, tr("New Country"), tr("Name:"), QLineEdit::Normal,
+                                               tr("Country %1").arg(featureCount(FeatureKind::Country) + 1),
+                                               &ok)
+                             .trimmed();
+    if (!ok || name.isEmpty())
+        return;
+
+    auto *country = new MapFeature(FeatureKind::Country);
+    country->setPolygon(polygon);
+    country->name = name;
+    country->color = nextCountryColor();
+    m_scene->addItem(country);
+    statusBar()->showMessage(tr("%1 created.").arg(name), 2000);
+}
+
+int MainWindow::featureCount(FeatureKind kind) const
+{
+    int count = 0;
+    for (QGraphicsItem *item : m_scene->items()) {
+        if (auto *feature = dynamic_cast<MapFeature *>(item); feature && feature->kind() == kind)
+            ++count;
+    }
+    return count;
+}
+
+QColor MainWindow::nextCountryColor() const
+{
+    const int count = std::size(kCountryColors);
+    return kCountryColors[featureCount(FeatureKind::Country) % count];
 }
 
 void MainWindow::setMode(MapView::Mode mode)

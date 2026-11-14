@@ -95,9 +95,24 @@ void MapFeature::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWid
 {
     painter->setRenderHint(QPainter::Antialiasing);
 
-    if (m_kind == FeatureKind::Land) {
+    switch (m_kind) {
+    case FeatureKind::Land: {
         painter->setBrush(QColor(0xa6, 0xbd, 0x7f));
         painter->setPen(QPen(QColor(0x4c, 0x66, 0x3c), 2));
         painter->drawPolygon(m_polygon);
+        break;
+    }
+    case FeatureKind::Country: {
+        QColor fill = color.isValid() ? color : QColor(0xd9, 0x6b, 0x5e);
+        fill.setAlpha(85);
+        painter->setBrush(fill);
+        painter->setPen(QPen(color.isValid() ? color.darker(160) : QColor(0x8a, 0x35, 0x2c), 2.5));
+        painter->drawPolygon(m_polygon);
+        break;
+    }
+    case FeatureKind::TerrainArea:
+    case FeatureKind::Region:
+    case FeatureKind::Settlement:
+        break;
     }
 }
