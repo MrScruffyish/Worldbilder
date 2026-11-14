@@ -3,6 +3,7 @@
 #include "MapFeature.h"
 
 #include <QGraphicsScene>
+#include <QFontMetricsF>
 #include <QKeyEvent>
 #include <QLineF>
 #include <QMouseEvent>
@@ -12,6 +13,25 @@
 #include <QWheelEvent>
 
 #include <algorithm>
+
+namespace {
+
+qreal distanceToSegment(const QPointF &point, const QPointF &a, const QPointF &b, QPointF *closest)
+{
+    const QPointF ab = b - a;
+    const qreal lengthSquared = ab.x() * ab.x() + ab.y() * ab.y();
+    qreal t = 0.0;
+    if (lengthSquared > 0.0) {
+        t = ((point.x() - a.x()) * ab.x() + (point.y() - a.y()) * ab.y()) / lengthSquared;
+        t = std::clamp(t, 0.0, 1.0);
+    }
+    const QPointF target = a + ab * t;
+    if (closest)
+        *closest = target;
+    return QLineF(point, target).length();
+}
+
+} // namespace
 
 MapView::MapView(QGraphicsScene *scene, QWidget *parent)
     : QGraphicsView(scene, parent)
@@ -37,6 +57,7 @@ void MapView::setMode(Mode mode)
 void MapView::setTool(Tool tool)
 {
     m_tool = tool;
+    m_snapValid = false;
     cancelDraft();
     updateCursor();
 }
@@ -127,12 +148,15 @@ void MapView::mousePressEvent(QMouseEvent *event)
     }
 
     if (m_mode == Mode::Edit && m_tool != Tool::None) {
-        const QPointF scenePos = mapToScene(event->pos());        if (event->button() == Qt::LeftButton) {
+        const QPointF scenePos = mapToScene(event->pos());
+        updateSnap(scenePos);
+        if (event->button() == Qt::LeftButton) {
+            const QPointF point = m_snapValid ? m_snapPoint : scenePos;
             if (m_tool == Tool::Settlement) {
-                emit pointChosen(m_tool, scenePos);
+                emit pointChosen(m_tool, point);
             } else {
-                m_draft.append(scenePos);
-                m_cursor = scenePos;
+                m_draft.append(point);
+                m_cursor = point;
                 m_drafting = true;
                 viewport()->update();
             }
@@ -162,8 +186,8 @@ void MapView::mouseMoveEvent(QMouseEvent *event)
 
     if (m_mode == Mode::Edit && m_tool != Tool::None) {
         m_cursor = mapToScene(event->pos());
-        if (m_drafting)
-            viewport()->update();
+        updateSnap(m_cursor);
+        viewport()->update();
     }
 
     QGraphicsView::mouseMoveEvent(event);
@@ -204,33 +228,135 @@ void MapView::drawForeground(QPainter *painter, const QRectF &rect)
 {
     QGraphicsView::drawForeground(painter, rect);
 
-    if (!m_drafting || m_draft.isEmpty())
+    const double scale = painter->worldTransform().m11();
+    if (scale <= 0.0)
+        return;
+
+    if (!m_drafting && !m_snapValid)
         return;
 
     painter->save();
     painter->setRenderHint(QPainter::Antialiasing);
 
-    QPen outline(QColor(0x20, 0x30, 0x3c), 0);
-    outline.setStyle(Qt::DashLine);
-    painter->setPen(outline);
-    painter->setBrush(QColor(255, 255, 255, 45));
+    if (m_drafting && !m_draft.isEmpty()) {
+        QPen outline(QColor(0x20, 0x30, 0x3c), 0);
+        outline.setStyle(Qt::DashLine);
+        painter->setPen(outline);
+        painter->setBrush(QColor(255, 255, 255, 45));
 
-    if (m_draft.size() >= 3)
-        painter->drawPolygon(m_draft);
-    else
-        painter->drawPolyline(m_draft);
+        if (m_draft.size() >= 3)
+            painter->drawPolygon(m_draft);
+        else
+            painter->drawPolyline(m_draft);
 
-    painter->setBrush(Qt::NoBrush);
-    painter->drawLine(m_draft.last(), m_cursor);
+        painter->setBrush(Qt::NoBrush);
+        painter->drawLine(m_draft.last(), m_snapValid ? m_snapPoint : m_cursor);
 
-    const double scale = painter->worldTransform().m11();
-    const double radius = 4.0 / scale;
-    painter->setPen(QPen(QColor(0x20, 0x30, 0x3c), 0));
-    painter->setBrush(Qt::white);
-    for (const QPointF &point : m_draft)
-        painter->drawEllipse(point, radius, radius);
+        const double radius = 4.0 / scale;
+        painter->setPen(QPen(QColor(0x20, 0x30, 0x3c), 0));
+        painter->setBrush(Qt::white);
+        for (const QPointF &point : m_draft)
+            painter->drawEllipse(point, radius, radius);
+    }
+
+    if (m_snapValid) {
+        const double ring = 7.0 / scale;
+        painter->setPen(QPen(QColor(0xff, 0x8f, 0x1c), 2.0 / scale));
+        painter->setBrush(QColor(0xff, 0x8f, 0x1c, 60));
+        painter->drawEllipse(m_snapPoint, ring, ring);
+
+        QFont font = painter->font();
+        font.setPixelSize(qMax(1, qRound(11.0 / scale)));
+        painter->setFont(font);
+
+        const QString text = tr("click to snap: %1").arg(m_snapLabel);
+        const QFontMetricsF metrics(font);
+        const QRectF textRect(0, 0, metrics.horizontalAdvance(text) + 10.0 / scale,
+                              metrics.height() + 4.0 / scale);
+        const QPointF origin = m_snapPoint + QPointF(10.0 / scale, -10.0 / scale - textRect.height());
+
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(QColor(255, 255, 255, 220));
+        painter->drawRoundedRect(textRect.translated(origin), 3.0 / scale, 3.0 / scale);
+        painter->setPen(QColor(0x32, 0x2d, 0x26));
+        painter->drawText(textRect.translated(origin), Qt::AlignCenter, text);
+    }
 
     painter->restore();
+}
+
+void MapView::updateSnap(const QPointF &scenePos)
+{
+    m_snapValid = false;
+    m_snapLabel.clear();
+
+    if (m_mode != Mode::Edit || m_tool == Tool::None)
+        return;
+
+    const double threshold = 10.0 / qMax(zoomScale(), 0.001);
+    bool hasVertex = false;
+    bool hasEdge = false;
+    double bestVertex = threshold;
+    double bestEdge = threshold;
+    QPointF vertexPoint;
+    QPointF edgePoint;
+    QString vertexLabel;
+    QString edgeLabel;
+
+    for (QGraphicsItem *item : scene()->items()) {
+        auto *feature = dynamic_cast<MapFeature *>(item);
+        if (!feature || !feature->isVisible())
+            continue;
+
+        if (feature->kind() == FeatureKind::Settlement) {
+            const QPointF point = feature->point();
+            const double distance = QLineF(scenePos, point).length();
+            if (distance <= bestVertex) {
+                bestVertex = distance;
+                vertexPoint = point;
+                vertexLabel = feature->name.isEmpty() ? feature->kindName() : feature->name;
+                hasVertex = true;
+            }
+            continue;
+        }
+
+        const QPolygonF polygon = feature->polygon();
+        if (polygon.size() < 2)
+            continue;
+
+        const QString label = feature->kindName();
+        for (int i = 0; i < polygon.size(); ++i) {
+            const QPointF &a = polygon.at(i);
+            const QPointF &b = polygon.at((i + 1) % polygon.size());
+
+            const double vertexDistance = QLineF(scenePos, a).length();
+            if (vertexDistance <= bestVertex) {
+                bestVertex = vertexDistance;
+                vertexPoint = a;
+                vertexLabel = tr("%1 corner").arg(label);
+                hasVertex = true;
+            }
+
+            QPointF closest;
+            const double edgeDistance = distanceToSegment(scenePos, a, b, &closest);
+            if (edgeDistance <= bestEdge) {
+                bestEdge = edgeDistance;
+                edgePoint = closest;
+                edgeLabel = tr("%1 border").arg(label);
+                hasEdge = true;
+            }
+        }
+    }
+
+    if (hasVertex) {
+        m_snapPoint = vertexPoint;
+        m_snapLabel = vertexLabel;
+        m_snapValid = true;
+    } else if (hasEdge) {
+        m_snapPoint = edgePoint;
+        m_snapLabel = edgeLabel;
+        m_snapValid = true;
+    }
 }
 
 void MapView::finishDraft()

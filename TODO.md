@@ -1,7 +1,6 @@
 Overall rule: Do everything very simple at first, no backwards compatability, commit with terse messages when one task is done. Avoid tests for now.
 
 # TODO
-16. "snap" to lines and points in a resonable way. If I start with sea for eaxample, and draw a landmass (country), then tries to place a region in it, it should snap to the borders of the region, and not extend outside of it. Perhaps if Im close with mouse pointer it could display "click to snap" or something?
 17. Undo/Redo options.
 
 
@@ -21,3 +20,4 @@ Overall rule: Do everything very simple at first, no backwards compatability, co
 13. You can resize the map as needed (ie make larger to put more on it.)
 14. the program should also be able to work with .json files (when saving first time, let choose between .world or .json)
 15. Indicate corners of regions with some small dots.
+16. "snap" to lines and points in a resonable way. If I start with sea for eaxample, and draw a landmass (country), then tries to place a region in it, it should snap to the borders of the region, and not extend outside of it. Perhaps if Im close with mouse pointer it could display "click to snap" or something?

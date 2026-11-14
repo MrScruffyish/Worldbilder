@@ -3,6 +3,7 @@
 #include <QGraphicsView>
 #include <QPolygonF>
 #include <QSizeF>
+#include <QString>
 
 class QGraphicsScene;
 class QKeyEvent;
@@ -65,6 +66,7 @@ private:
     void emitZoom();
     void finishDraft();
     void cancelDraft();
+    void updateSnap(const QPointF &scenePos);
 
     Mode m_mode = Mode::Explore;
     Tool m_tool = Tool::None;
@@ -75,4 +77,7 @@ private:
     bool m_drafting = false;
     bool m_clickCandidate = false;
     QPoint m_pressPos;
+    bool m_snapValid = false;
+    QPointF m_snapPoint;
+    QString m_snapLabel;
 };

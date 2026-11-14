@@ -720,6 +720,20 @@ void MainWindow::addRegion(const QPolygonF &polygon)
         return;
     }
 
+    QPainterPath countryPath;
+    countryPath.addPolygon(country->polygon());
+    countryPath.closeSubpath();
+
+    QPainterPath regionPath;
+    regionPath.addPolygon(polygon);
+    regionPath.closeSubpath();
+
+    const QPolygonF clipped = regionPath.intersected(countryPath).toFillPolygon();
+    if (clipped.size() < 3) {
+        QMessageBox::information(this, tr("Region"), tr("The region must overlap its country."));
+        return;
+    }
+
     bool ok = false;
     const QString name = QInputDialog::getText(this, tr("New Region"), tr("Name:"), QLineEdit::Normal,
                                                tr("Region %1").arg(featureCount(FeatureKind::Region) + 1),
@@ -729,7 +743,7 @@ void MainWindow::addRegion(const QPolygonF &polygon)
         return;
 
     auto *region = new MapFeature(FeatureKind::Region);
-    region->setPolygon(polygon);
+    region->setPolygon(clipped);
     region->name = name;
     region->countryName = country->name;
     region->color = country->color;
