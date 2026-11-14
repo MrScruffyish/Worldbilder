@@ -45,6 +45,10 @@ description; renaming a country updates its regions. Visiting a settlement in
 Explore mode adds a line to the **Travel Log** dock; `File > Export Travel
 Log...` or the dock's **Export...** button saves it as a text file.
 
+In Explore mode, click a settlement to start travelling. Click another
+settlement, region or country to walk there; the log shows how many days the
+terrain-weighted journey took (roughly 30 map units per day on grassland).
+
 `File > New World...` starts from sea or a big land area. `File > Resize
 World...` extends the map; features stay where they are. `Generate > Random
 Additions...` adds a chosen number of land, countries, regions, terrain or

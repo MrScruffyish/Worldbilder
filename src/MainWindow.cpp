@@ -289,9 +289,30 @@ void MainWindow::onFeatureClicked(MapFeature *feature)
     if (!feature)
         return;
 
-    if (feature->kind() == FeatureKind::Settlement) {
+    const bool travelTarget = feature->kind() == FeatureKind::Settlement
+                              || feature->kind() == FeatureKind::Region
+                              || feature->kind() == FeatureKind::Country;
+    if (m_view->mode() == MapView::Mode::Explore && travelTarget) {
         const QString title = feature->name.isEmpty() ? feature->kindName() : feature->name;
-        logTravel(tr("Visited %1 (%2).").arg(title, settlementName(feature->settlement)));
+
+        if (!m_travelOrigin) {
+            if (feature->kind() == FeatureKind::Settlement) {
+                m_travelOrigin = feature;
+                logTravel(tr("Started at %1.").arg(title));
+                statusBar()->showMessage(tr("Travel started at %1.").arg(title), 2500);
+            }
+        } else if (feature != m_travelOrigin) {
+            const QPointF target = feature->kind() == FeatureKind::Settlement
+                                       ? feature->point()
+                                       : feature->centroid();
+            const QPointF origin = m_travelOrigin->kind() == FeatureKind::Settlement
+                                       ? m_travelOrigin->point()
+                                       : m_travelOrigin->centroid();
+            const int days = qMax(1, qRound(lineTravelCost(origin, target) / 30.0));
+            logTravel(tr("Walked %1 days, came to %2.").arg(days).arg(title));
+            statusBar()->showMessage(tr("Walked %1 days to %2.").arg(days).arg(title), 3000);
+            m_travelOrigin = feature;
+        }
     }
 
     switch (feature->kind()) {
@@ -528,6 +549,7 @@ void MainWindow::restoreFromJson(const QJsonObject &root)
     selectFeature(nullptr);
     m_view->setTool(m_view->tool());
     m_scene->clear();
+    m_travelOrigin = nullptr;
     m_worldSize = QSizeF(width, height);
     m_scene->setSceneRect(QRectF(QPointF(0, 0), m_worldSize));
     m_view->setWorldSize(m_worldSize);
@@ -1054,6 +1076,7 @@ void MainWindow::chooseNewWorld()
 void MainWindow::newWorld(bool land)
 {
     selectFeature(nullptr);
+    m_travelOrigin = nullptr;
     m_view->setTool(m_view->tool());
     m_scene->clear();
     m_scene->setSceneRect(QRectF(QPointF(0, 0), m_worldSize));
@@ -1241,19 +1264,23 @@ TerrainType MainWindow::terrainAt(const QPointF &point) const
 double MainWindow::roadTravelCost(const QPolygonF &polygon) const
 {
     double cost = 0.0;
-    for (int i = 0; i + 1 < polygon.size(); ++i) {
-        const QPointF &a = polygon.at(i);
-        const QPointF &b = polygon.at(i + 1);
-        const double length = QLineF(a, b).length();
-        if (length <= 0.0)
-            continue;
+    for (int i = 0; i + 1 < polygon.size(); ++i)
+        cost += lineTravelCost(polygon.at(i), polygon.at(i + 1));
+    return cost;
+}
 
-        const int steps = qMax(1, int(std::ceil(length / 12.0)));
-        const double stepLength = length / steps;
-        for (int step = 0; step < steps; ++step) {
-            const QPointF sample = a + (b - a) * ((step + 0.5) / steps);
-            cost += stepLength * terrainTravelCost(terrainAt(sample));
-        }
+double MainWindow::lineTravelCost(const QPointF &from, const QPointF &to) const
+{
+    const double length = QLineF(from, to).length();
+    if (length <= 0.0)
+        return 0.0;
+
+    const int steps = qMax(1, int(std::ceil(length / 12.0)));
+    const double stepLength = length / steps;
+    double cost = 0.0;
+    for (int step = 0; step < steps; ++step) {
+        const QPointF sample = from + (to - from) * ((step + 0.5) / steps);
+        cost += stepLength * terrainTravelCost(terrainAt(sample));
     }
     return cost;
 }

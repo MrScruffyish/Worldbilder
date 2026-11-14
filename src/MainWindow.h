@@ -46,6 +46,7 @@ private:
     QPolygonF clipToLand(const QPolygonF &polygon) const;
     TerrainType terrainAt(const QPointF &point) const;
     double roadTravelCost(const QPolygonF &polygon) const;
+    double lineTravelCost(const QPointF &from, const QPointF &to) const;
     TerrainType currentTerrain() const;
     int featureCount(FeatureKind kind) const;
     QColor nextCountryColor() const;
@@ -102,6 +103,7 @@ private:
     QPlainTextEdit *m_logView = nullptr;
     QMenu *m_viewMenu = nullptr;
     MapFeature *m_selected = nullptr;
+    MapFeature *m_travelOrigin = nullptr;
     QString m_currentFile;
     QList<QJsonObject> m_history;
     int m_historyIndex = -1;
