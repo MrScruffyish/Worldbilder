@@ -24,6 +24,9 @@ Two modes, switched in the toolbar or with `F1` / `F2`:
   the whole world.
 - **Edit** - pick a tool and click map points; double-click, right-click or
   `Enter` closes the polygon, `Esc` cancels. Middle-drag pans while editing.
+  Near a corner or border the cursor shows **click to snap** and uses that
+  point. Regions are clipped to their country. `Ctrl+Z` / `Ctrl+Shift+Z` undo
+  and redo map changes.
 
 Tools and shortcuts:
 

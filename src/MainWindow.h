@@ -3,6 +3,8 @@
 #include "MapFeature.h"
 #include "MapView.h"
 
+#include <QJsonObject>
+#include <QList>
 #include <QMainWindow>
 #include <QSizeF>
 
@@ -49,6 +51,13 @@ private:
     bool readWorld(const QString &path);
     void resizeWorld();
     void updateTitle();
+    QJsonObject worldToJson() const;
+    void restoreFromJson(const QJsonObject &root);
+    void resetHistory();
+    void pushHistory();
+    void undo();
+    void redo();
+    void updateHistoryActions();
 
     QGraphicsScene *m_scene;
     MapView *m_view;
@@ -59,6 +68,8 @@ private:
     QAction *m_terrainAction = nullptr;
     QAction *m_regionAction = nullptr;
     QAction *m_settlementAction = nullptr;
+    QAction *m_undoAction = nullptr;
+    QAction *m_redoAction = nullptr;
     QComboBox *m_terrainCombo = nullptr;
     QLabel *m_zoomLabel = nullptr;
     QDockWidget *m_infoDock = nullptr;
@@ -69,5 +80,8 @@ private:
     QMenu *m_viewMenu = nullptr;
     MapFeature *m_selected = nullptr;
     QString m_currentFile;
+    QList<QJsonObject> m_history;
+    int m_historyIndex = -1;
+    bool m_restoring = false;
     QSizeF m_worldSize{2000, 1500};
 };

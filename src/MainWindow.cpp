@@ -279,6 +279,7 @@ void MainWindow::editSelectedFeature()
 
     feature->refresh();
     selectFeature(feature);
+    pushHistory();
     statusBar()->showMessage(tr("Updated %1.").arg(feature->kindName().toLower()), 2000);
 }
 
@@ -316,18 +317,7 @@ void MainWindow::saveWorldAs()
 
 bool MainWindow::writeWorld(const QString &path)
 {
-    QJsonArray features;
-    const QList<QGraphicsItem *> items = m_scene->items(Qt::AscendingOrder);
-    for (QGraphicsItem *item : items) {
-        if (auto *feature = dynamic_cast<MapFeature *>(item))
-            features.append(feature->toJson());
-    }
-
-    QJsonObject root;
-    root.insert(QStringLiteral("version"), 1);
-    root.insert(QStringLiteral("width"), m_worldSize.width());
-    root.insert(QStringLiteral("height"), m_worldSize.height());
-    root.insert(QStringLiteral("features"), features);
+    const QJsonObject root = worldToJson();
 
     QFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
@@ -400,17 +390,50 @@ bool MainWindow::readWorld(const QString &path)
         return false;
     }
 
-    QVector<MapFeature *> features;
     const QJsonArray featureArray = root.value(QStringLiteral("features")).toArray();
     for (const QJsonValue &value : featureArray) {
-        MapFeature *feature = MapFeature::fromJson(value.toObject());
-        if (!feature) {
-            qDeleteAll(features);
+        MapFeature *probe = MapFeature::fromJson(value.toObject());
+        if (!probe) {
             QMessageBox::warning(this, tr("Open World"),
                                  tr("Could not read %1:\nIt contains an unknown feature.").arg(path));
             return false;
         }
-        features.append(feature);
+        delete probe;
+    }
+    // Validate the whole document before replacing the current world.
+    restoreFromJson(root);
+    m_view->fitWorld();
+    resetHistory();
+    return true;
+}
+
+QJsonObject MainWindow::worldToJson() const
+{
+    QJsonArray features;
+    const QList<QGraphicsItem *> items = m_scene->items(Qt::AscendingOrder);
+    for (QGraphicsItem *item : items) {
+        if (auto *feature = dynamic_cast<MapFeature *>(item))
+            features.append(feature->toJson());
+    }
+
+    QJsonObject root;
+    root.insert(QStringLiteral("version"), 1);
+    root.insert(QStringLiteral("width"), m_worldSize.width());
+    root.insert(QStringLiteral("height"), m_worldSize.height());
+    root.insert(QStringLiteral("features"), features);
+    return root;
+}
+
+void MainWindow::restoreFromJson(const QJsonObject &root)
+{
+    const double width = root.value(QStringLiteral("width")).toDouble();
+    const double height = root.value(QStringLiteral("height")).toDouble();
+
+    QVector<MapFeature *> features;
+    const QJsonArray featureArray = root.value(QStringLiteral("features")).toArray();
+    for (const QJsonValue &value : featureArray) {
+        if (MapFeature *feature = MapFeature::fromJson(value.toObject()))
+            features.append(feature);
     }
 
     selectFeature(nullptr);
@@ -421,8 +444,63 @@ bool MainWindow::readWorld(const QString &path)
     m_view->setWorldSize(m_worldSize);
     for (MapFeature *feature : features)
         m_scene->addItem(feature);
-    m_view->fitWorld();
-    return true;
+    updateVisibility(m_view->zoomScale());
+}
+
+void MainWindow::resetHistory()
+{
+    m_history.clear();
+    m_history.append(worldToJson());
+    m_historyIndex = 0;
+    updateHistoryActions();
+}
+
+void MainWindow::pushHistory()
+{
+    if (m_restoring)
+        return;
+
+    if (m_historyIndex + 1 < m_history.size())
+        m_history.erase(m_history.begin() + m_historyIndex + 1, m_history.end());
+    m_history.append(worldToJson());
+    if (m_history.size() > 100)
+        m_history.removeFirst();
+    m_historyIndex = m_history.size() - 1;
+    updateHistoryActions();
+}
+
+void MainWindow::undo()
+{
+    if (m_historyIndex <= 0)
+        return;
+    --m_historyIndex;
+    const int index = m_historyIndex;
+    m_restoring = true;
+    restoreFromJson(m_history.at(index));
+    m_restoring = false;
+    updateHistoryActions();
+    statusBar()->showMessage(tr("Undo."), 1200);
+}
+
+void MainWindow::redo()
+{
+    if (m_historyIndex < 0 || m_historyIndex + 1 >= m_history.size())
+        return;
+    ++m_historyIndex;
+    const int index = m_historyIndex;
+    m_restoring = true;
+    restoreFromJson(m_history.at(index));
+    m_restoring = false;
+    updateHistoryActions();
+    statusBar()->showMessage(tr("Redo."), 1200);
+}
+
+void MainWindow::updateHistoryActions()
+{
+    if (m_undoAction)
+        m_undoAction->setEnabled(m_historyIndex > 0);
+    if (m_redoAction)
+        m_redoAction->setEnabled(m_historyIndex >= 0 && m_historyIndex + 1 < m_history.size());
 }
 
 void MainWindow::resizeWorld()
@@ -456,6 +534,7 @@ void MainWindow::resizeWorld()
     m_scene->setSceneRect(QRectF(QPointF(0, 0), m_worldSize));
     m_view->setWorldSize(m_worldSize);
     m_view->fitWorld();
+    pushHistory();
     statusBar()->showMessage(tr("World resized to %1 x %2.").arg(widthSpin->value()).arg(heightSpin->value()),
                              2500);
 }
@@ -551,6 +630,16 @@ void MainWindow::createActions()
     fitAction->setShortcut(Qt::Key_F);
     connect(fitAction, &QAction::triggered, this, [this] { m_view->fitWorld(); });
 
+    m_undoAction = new QAction(tr("Undo"), this);
+    m_undoAction->setShortcut(QKeySequence::Undo);
+    m_undoAction->setEnabled(false);
+    connect(m_undoAction, &QAction::triggered, this, &MainWindow::undo);
+
+    m_redoAction = new QAction(tr("Redo"), this);
+    m_redoAction->setShortcut(QKeySequence::Redo);
+    m_redoAction->setEnabled(false);
+    connect(m_redoAction, &QAction::triggered, this, &MainWindow::redo);
+
     auto *zoomInAction = new QAction(tr("Zoom In"), this);
     zoomInAction->setShortcut(QKeySequence::ZoomIn);
     connect(zoomInAction, &QAction::triggered, this, [this] { m_view->zoomBy(1.25); });
@@ -596,6 +685,10 @@ void MainWindow::createActions()
     auto *modeMenu = menuBar()->addMenu(tr("&Mode"));
     modeMenu->addAction(m_exploreAction);
     modeMenu->addAction(m_editAction);
+
+    auto *editMenu = menuBar()->addMenu(tr("&Edit"));
+    editMenu->addAction(m_undoAction);
+    editMenu->addAction(m_redoAction);
 
     auto *viewMenu = menuBar()->addMenu(tr("&View"));
     m_viewMenu = viewMenu;
@@ -654,6 +747,7 @@ void MainWindow::newWorld(bool land)
     m_view->fitWorld();
     m_currentFile.clear();
     updateTitle();
+    resetHistory();
 }
 
 MapFeature *MainWindow::addBigLand()
@@ -675,6 +769,7 @@ void MainWindow::addLand(const QPolygonF &polygon)
     auto *land = new MapFeature(FeatureKind::Land);
     land->setPolygon(polygon);
     m_scene->addItem(land);
+    pushHistory();
     statusBar()->showMessage(tr("Land added."), 2000);
 }
 
@@ -693,6 +788,7 @@ void MainWindow::addCountry(const QPolygonF &polygon)
     country->name = name;
     country->color = nextCountryColor();
     m_scene->addItem(country);
+    pushHistory();
     statusBar()->showMessage(tr("%1 created.").arg(name), 2000);
 }
 
@@ -702,6 +798,7 @@ void MainWindow::addTerrainArea(const QPolygonF &polygon)
     area->setPolygon(polygon);
     area->terrain = currentTerrain();
     m_scene->addItem(area);
+    pushHistory();
     statusBar()->showMessage(tr("%1 area placed.").arg(terrainName(area->terrain)), 2000);
 }
 
@@ -748,6 +845,7 @@ void MainWindow::addRegion(const QPolygonF &polygon)
     region->countryName = country->name;
     region->color = country->color;
     m_scene->addItem(region);
+    pushHistory();
     statusBar()->showMessage(tr("%1 added to %2.").arg(name, country->name), 2000);
 }
 
@@ -799,6 +897,7 @@ void MainWindow::addSettlement(const QPointF &point)
     settlement->settlement = type;
     settlement->name = name;
     m_scene->addItem(settlement);
+    pushHistory();
     statusBar()->showMessage(tr("%1 %2 placed.").arg(typeName, name), 2000);
 }
 
