@@ -379,7 +379,8 @@ QRectF MapFeature::boundingRect() const
         return QRectF(m_point.x() - 14, m_point.y() - 16, width, 34);
     }
 
-    QRectF rect = m_polygon.boundingRect().adjusted(-4, -4, 4, 4);
+    const qreal margin = (m_kind == FeatureKind::Road || m_kind == FeatureKind::River) ? 10.0 : 4.0;
+    QRectF rect = m_polygon.boundingRect().adjusted(-margin, -margin, margin, margin);
     if (!name.isEmpty() && (m_kind == FeatureKind::Country || m_kind == FeatureKind::Region)) {
         const QFontMetricsF metrics(labelFont());
         const qreal width = metrics.horizontalAdvance(name);
