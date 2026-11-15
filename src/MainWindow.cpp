@@ -1310,14 +1310,33 @@ void MainWindow::newWorld(bool land)
 
 MapFeature *MainWindow::addBigLand()
 {
-    const QRectF area(m_worldSize.width() * 0.06, m_worldSize.height() * 0.06,
-                      m_worldSize.width() * 0.88, m_worldSize.height() * 0.88);
+    const double w = m_worldSize.width();
+    const double h = m_worldSize.height();
 
-    QPainterPath path;
-    path.addRoundedRect(area, 140, 140);
+    // An irregular coastline rather than a rounded rectangle.
+    const QPolygonF shape{
+        QPointF(0.08, 0.20), QPointF(0.16, 0.10),
+        QPointF(0.31, 0.06), QPointF(0.43, 0.13),
+        QPointF(0.57, 0.07), QPointF(0.73, 0.10),
+        QPointF(0.88, 0.19), QPointF(0.92, 0.35),
+        QPointF(0.85, 0.48), QPointF(0.93, 0.61),
+        QPointF(0.89, 0.77), QPointF(0.76, 0.90),
+        QPointF(0.59, 0.93), QPointF(0.43, 0.87),
+        QPointF(0.29, 0.94), QPointF(0.14, 0.86),
+        QPointF(0.06, 0.71), QPointF(0.12, 0.55),
+        QPointF(0.05, 0.38),
+    };
+
+    QPolygonF coastline;
+    coastline.reserve(shape.size());
+    constexpr double spread = 1.07;
+    for (const QPointF &point : shape) {
+        coastline.append(QPointF((0.5 + (point.x() - 0.5) * spread) * w,
+                                 (0.5 + (point.y() - 0.5) * spread) * h));
+    }
 
     auto *land = new MapFeature(FeatureKind::Land);
-    land->setPolygon(path.toFillPolygon());
+    land->setPolygon(coastline);
     m_scene->addItem(land);
     return land;
 }
