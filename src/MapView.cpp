@@ -2,10 +2,12 @@
 
 #include "MapFeature.h"
 
+#include <QContextMenuEvent>
 #include <QGraphicsScene>
 #include <QFontMetricsF>
 #include <QKeyEvent>
 #include <QLineF>
+#include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
@@ -49,6 +51,7 @@ MapView::MapView(QGraphicsScene *scene, QWidget *parent)
 void MapView::setMode(Mode mode)
 {
     m_mode = mode;
+    cancelPointReplacement();
     cancelDraft();
     setDragMode(mode == Mode::Explore ? QGraphicsView::ScrollHandDrag : QGraphicsView::NoDrag);
     updateCursor();
@@ -56,6 +59,7 @@ void MapView::setMode(Mode mode)
 
 void MapView::setTool(Tool tool)
 {
+    cancelPointReplacement();
     m_tool = tool;
     m_snapValid = false;
     cancelDraft();
@@ -67,6 +71,19 @@ void MapView::setEditSelection(MapFeature *feature)
     if (m_editSelection == feature)
         return;
     m_editSelection = feature;
+    viewport()->update();
+}
+
+void MapView::beginPointReplacement(MapFeature *feature, int index)
+{
+    if (!feature || index < 0)
+        return;
+
+    m_editSelection = feature;
+    m_replacingPoint = true;
+    m_replaceIndex = index;
+    m_snapValid = false;
+    updateCursor();
     viewport()->update();
 }
 
@@ -104,6 +121,8 @@ void MapView::updateCursor()
 {
     if (m_mode == Mode::Explore)
         viewport()->setCursor(Qt::OpenHandCursor);
+    else if (m_replacingPoint)
+        viewport()->setCursor(Qt::CrossCursor);
     else if (m_tool == Tool::None)
         viewport()->setCursor(Qt::ArrowCursor);
     else
@@ -148,6 +167,34 @@ void MapView::mousePressEvent(QMouseEvent *event)
         m_panning = true;
         m_lastPan = event->pos();
         viewport()->setCursor(Qt::ClosedHandCursor);
+        event->accept();
+        return;
+    }
+
+    if (m_replacingPoint) {
+        if (event->button() == Qt::RightButton) {
+            cancelPointReplacement();
+        } else if (event->button() == Qt::LeftButton && m_editSelection && m_replaceIndex >= 0) {
+            const QPointF scenePos = mapToScene(event->pos());
+            updateSnap(scenePos, m_editSelection);
+            const QPointF target = m_snapValid ? m_snapPoint : scenePos;
+
+            if (m_editSelection->kind() == FeatureKind::Settlement) {
+                m_editSelection->setPoint(target);
+            } else {
+                QPolygonF polygon = m_editSelection->polygon();
+                if (m_replaceIndex < polygon.size())
+                    polygon[m_replaceIndex] = target;
+                m_editSelection->setPolygon(polygon);
+            }
+
+            m_replacingPoint = false;
+            m_replaceIndex = -1;
+            m_snapValid = false;
+            updateCursor();
+            viewport()->update();
+            emit featureEdited();
+        }
         event->accept();
         return;
     }
@@ -228,6 +275,14 @@ void MapView::mouseMoveEvent(QMouseEvent *event)
         return;
     }
 
+    if (m_replacingPoint) {
+        m_cursor = mapToScene(event->pos());
+        updateSnap(m_cursor, m_editSelection);
+        viewport()->update();
+        event->accept();
+        return;
+    }
+
     if (m_draggingSelection && m_editSelection) {
         const QPointF scenePos = mapToScene(event->pos());
         if (m_dragIndex >= 0) {
@@ -287,8 +342,59 @@ void MapView::mouseDoubleClickEvent(QMouseEvent *event)
     QGraphicsView::mouseDoubleClickEvent(event);
 }
 
+void MapView::contextMenuEvent(QContextMenuEvent *event)
+{
+    if (m_mode != Mode::Edit || m_tool != Tool::None) {
+        QGraphicsView::contextMenuEvent(event);
+        return;
+    }
+
+    const QPointF scenePos = mapToScene(event->pos());
+    const double threshold = 10.0 / qMax(zoomScale(), 0.001);
+
+    MapFeature *feature = nullptr;
+    int index = -1;
+    if (m_editSelection) {
+        index = controlPointAt(m_editSelection, scenePos, threshold);
+        if (index >= 0)
+            feature = m_editSelection;
+    }
+
+    if (!feature) {
+        MapFeature *candidate = featureAt(scenePos);
+        if (candidate) {
+            const int candidateIndex = controlPointAt(candidate, scenePos, threshold);
+            if (candidateIndex >= 0) {
+                feature = candidate;
+                index = candidateIndex;
+                setEditSelection(feature);
+                emit featureSelected(feature);
+            }
+        }
+    }
+
+    if (!feature || index < 0) {
+        QGraphicsView::contextMenuEvent(event);
+        return;
+    }
+
+    QMenu menu(this);
+    QAction *replaceAction = menu.addAction(tr("Replace Control Point"));
+    if (menu.exec(event->globalPos()) == replaceAction) {
+        m_cursor = scenePos;
+        beginPointReplacement(feature, index);
+    }
+    event->accept();
+}
+
 void MapView::keyPressEvent(QKeyEvent *event)
 {
+    if (m_replacingPoint && event->key() == Qt::Key_Escape) {
+        cancelPointReplacement();
+        event->accept();
+        return;
+    }
+
     if (m_draggingSelection && m_editSelection && event->key() == Qt::Key_Escape) {
         if (m_editSelection->kind() == FeatureKind::Settlement)
             m_editSelection->setPoint(m_dragOriginalPoint);
@@ -336,14 +442,38 @@ void MapView::drawForeground(QPainter *painter, const QRectF &rect)
     if (m_mode == Mode::Edit && m_tool == Tool::None && m_editSelection) {
         const double radius = 5.0 / scale;
         painter->setPen(QPen(QColor(0x20, 0x30, 0x3c), 1.5 / scale));
-        painter->setBrush(QColor(0xff, 0x9f, 0x1c));
 
         if (m_editSelection->kind() == FeatureKind::Settlement) {
+            painter->setBrush(m_replacingPoint ? QColor(0xd6, 0x3a, 0x2a)
+                                               : QColor(0xff, 0x9f, 0x1c));
             painter->drawEllipse(m_editSelection->point(), radius, radius);
         } else {
-            for (const QPointF &point : m_editSelection->polygon())
-                painter->drawEllipse(point, radius, radius);
+            const QPolygonF polygon = m_editSelection->polygon();
+            for (int i = 0; i < polygon.size(); ++i) {
+                painter->setBrush(m_replacingPoint && i == m_replaceIndex
+                                      ? QColor(0xd6, 0x3a, 0x2a)
+                                      : QColor(0xff, 0x9f, 0x1c));
+                painter->drawEllipse(polygon.at(i), radius, radius);
+            }
         }
+    }
+
+    if (m_replacingPoint) {
+        QFont font = painter->font();
+        font.setPixelSize(qMax(1, qRound(11.0 / scale)));
+        painter->setFont(font);
+
+        const QString text = tr("click to place the point - Esc cancels");
+        const QFontMetricsF metrics(font);
+        const QRectF textRect(0, 0, metrics.horizontalAdvance(text) + 10.0 / scale,
+                              metrics.height() + 4.0 / scale);
+        const QPointF origin = m_cursor + QPointF(10.0 / scale, -10.0 / scale - textRect.height());
+
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(QColor(255, 255, 255, 220));
+        painter->drawRoundedRect(textRect.translated(origin), 3.0 / scale, 3.0 / scale);
+        painter->setPen(QColor(0x32, 0x2d, 0x26));
+        painter->drawText(textRect.translated(origin), Qt::AlignCenter, text);
     }
 
     if (m_drafting && !m_draft.isEmpty()) {
@@ -383,11 +513,13 @@ void MapView::drawForeground(QPainter *painter, const QRectF &rect)
                               metrics.height() + 4.0 / scale);
         const QPointF origin = m_snapPoint + QPointF(10.0 / scale, -10.0 / scale - textRect.height());
 
-        painter->setPen(Qt::NoPen);
-        painter->setBrush(QColor(255, 255, 255, 220));
-        painter->drawRoundedRect(textRect.translated(origin), 3.0 / scale, 3.0 / scale);
-        painter->setPen(QColor(0x32, 0x2d, 0x26));
-        painter->drawText(textRect.translated(origin), Qt::AlignCenter, text);
+        if (!m_replacingPoint) {
+            painter->setPen(Qt::NoPen);
+            painter->setBrush(QColor(255, 255, 255, 220));
+            painter->drawRoundedRect(textRect.translated(origin), 3.0 / scale, 3.0 / scale);
+            painter->setPen(QColor(0x32, 0x2d, 0x26));
+            painter->drawText(textRect.translated(origin), Qt::AlignCenter, text);
+        }
     }
 
     painter->restore();
@@ -518,6 +650,17 @@ void MapView::cancelDraft()
         return;
     m_draft.clear();
     m_drafting = false;
+    viewport()->update();
+}
+
+void MapView::cancelPointReplacement()
+{
+    if (!m_replacingPoint)
+        return;
+    m_replacingPoint = false;
+    m_replaceIndex = -1;
+    m_snapValid = false;
+    updateCursor();
     viewport()->update();
 }
 

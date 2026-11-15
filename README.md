@@ -28,8 +28,9 @@ Two modes, switched in the toolbar or with `F1` / `F2`:
   point. Regions are clipped to their country. `Ctrl+Z` / `Ctrl+Shift+Z` undo
   and redo map changes. With **Select / Move** active, click an item to select
   it, drag the item to move it, or drag one of its control points to reshape
-  it (a point snaps to nearby borders and slides along them). `Esc` cancels a
-  drag.
+  it (a point snaps to nearby borders and slides along them). Right-click a
+  control point and choose **Replace Control Point**, then click the new
+  position to move that point there; `Esc` cancels. `Esc` also cancels a drag.
 
 Tools and shortcuts:
 

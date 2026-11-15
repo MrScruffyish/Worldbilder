@@ -6,6 +6,7 @@
 #include <QString>
 
 class QGraphicsScene;
+class QContextMenuEvent;
 class QKeyEvent;
 class QPainter;
 class QWheelEvent;
@@ -42,6 +43,7 @@ public:
     Tool tool() const { return m_tool; }
     void setEditSelection(MapFeature *feature);
     MapFeature *editSelection() const { return m_editSelection; }
+    void beginPointReplacement(MapFeature *feature, int index);
     double zoomScale() const { return transform().m11(); }
 
     void setWorldSize(const QSizeF &size);
@@ -63,6 +65,7 @@ protected:
     void mouseMoveEvent(QMouseEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
     void mouseDoubleClickEvent(QMouseEvent *event) override;
+    void contextMenuEvent(QContextMenuEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
     void drawForeground(QPainter *painter, const QRectF &rect) override;
 
@@ -72,6 +75,7 @@ private:
     void emitZoom();
     void finishDraft();
     void cancelDraft();
+    void cancelPointReplacement();
     void updateSnap(const QPointF &scenePos, const MapFeature *exclude = nullptr);
     MapFeature *featureAt(const QPointF &scenePos) const;
     int controlPointAt(const MapFeature *feature, const QPointF &scenePos,
@@ -98,4 +102,6 @@ private:
     QPolygonF m_dragOriginalPolygon;
     QPointF m_dragOriginalPoint;
     bool m_geometryChanged = false;
+    bool m_replacingPoint = false;
+    int m_replaceIndex = -1;
 };
