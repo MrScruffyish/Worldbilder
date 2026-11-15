@@ -66,7 +66,10 @@ private:
     void addRandomCountries(int count);
     void addRandomRegions(int count);
     void addRandomRegionsToSelectedCountry();
+    void addRandomCountriesToSelectedLand();
+    void fillSelectedArea();
     void fillCountryWithRegions(MapFeature *country, int count);
+    void fillLandWithCountries(MapFeature *land, int count);
     void addRandomTerrainAreas(int count);
     void addRandomSettlements(int count);
     QPointF randomWorldPoint() const;

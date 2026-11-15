@@ -109,7 +109,6 @@ bool splitPolygon(const QPolygonF &polygon, QVector<QPolygonF> &pieces)
 {
     if (polygon.size() < 3)
         return false;
-
     QPainterPath subject;
     subject.addPolygon(polygon);
     subject.closeSubpath();
@@ -155,6 +154,68 @@ bool splitPolygon(const QPolygonF &polygon, QVector<QPolygonF> &pieces)
         return pieces.size() >= 2;
     }
     return false;
+}
+
+void splitPieces(QVector<QPolygonF> &pieces, int target);
+
+QVector<QPolygonF> fillPieces(const QPolygonF &area, const QVector<QPolygonF> &blocked,
+                              int target)
+{
+    QPainterPath freePath;
+    freePath.addPolygon(area);
+    freePath.closeSubpath();
+
+    for (const QPolygonF &other : blocked) {
+        QPainterPath otherPath;
+        otherPath.addPolygon(other);
+        otherPath.closeSubpath();
+        freePath = freePath.subtracted(otherPath);
+    }
+
+    QVector<QPolygonF> pieces;
+    const double areaSize = polygonArea(area);
+    for (const QPolygonF &piece : freePath.toFillPolygons()) {
+        if (piece.size() >= 3 && polygonArea(piece) > areaSize * 0.001)
+            pieces.append(piece);
+    }
+
+    splitPieces(pieces, target);
+    return pieces;
+}
+
+void splitPieces(QVector<QPolygonF> &pieces, int target)
+{
+    QVector<bool> stuck;
+    stuck.fill(false, pieces.size());
+
+    while (pieces.size() < target) {
+        int best = -1;
+        double bestArea = 0.0;
+        for (int i = 0; i < pieces.size(); ++i) {
+            if (stuck.at(i))
+                continue;
+            const double area = polygonArea(pieces.at(i));
+            if (area > bestArea) {
+                bestArea = area;
+                best = i;
+            }
+        }
+        if (best < 0)
+            break;
+
+        QVector<QPolygonF> split;
+        if (!splitPolygon(pieces.at(best), split)) {
+            stuck[best] = true;
+            continue;
+        }
+
+        pieces.removeAt(best);
+        stuck.removeAt(best);
+        for (const QPolygonF &piece : split) {
+            pieces.append(piece);
+            stuck.append(false);
+        }
+    }
 }
 
 const QColor kCountryColors[] = {
@@ -270,10 +331,10 @@ void MainWindow::createInfoDock()
     m_editButton->setEnabled(false);
     connect(m_editButton, &QPushButton::clicked, this, &MainWindow::editSelectedFeature);
 
-    m_regionsButton = new QPushButton(tr("Add Random Regions..."), widget);
+    m_regionsButton = new QPushButton(tr("Fill with..."), widget);
     m_regionsButton->setVisible(false);
     connect(m_regionsButton, &QPushButton::clicked, this,
-            &MainWindow::addRandomRegionsToSelectedCountry);
+            &MainWindow::fillSelectedArea);
     layout->addWidget(m_regionsButton);
     layout->addStretch();
 
@@ -372,8 +433,13 @@ void MainWindow::selectFeature(MapFeature *feature)
 
     if (m_editButton)
         m_editButton->setEnabled(true);
-    if (m_regionsButton)
-        m_regionsButton->setVisible(feature->kind() == FeatureKind::Country);
+    if (m_regionsButton) {
+        const bool isCountry = feature->kind() == FeatureKind::Country;
+        const bool isLand = feature->kind() == FeatureKind::Land;
+        m_regionsButton->setVisible(isCountry || isLand);
+        m_regionsButton->setText(isLand ? tr("Add Random Countries...")
+                                        : tr("Add Random Regions..."));
+    }
 
     QString title = feature->name;
     if (title.isEmpty()) {
@@ -966,66 +1032,60 @@ void MainWindow::addRandomRegionsToSelectedCountry()
     fillCountryWithRegions(m_selected, count);
 }
 
+void MainWindow::fillSelectedArea()
+{
+    if (!m_selected) {
+        QMessageBox::information(this, tr("Fill Area"),
+                                 tr("Select a country or land area first."));
+        return;
+    }
+
+    if (m_selected->kind() == FeatureKind::Country) {
+        addRandomRegionsToSelectedCountry();
+    } else if (m_selected->kind() == FeatureKind::Land) {
+        addRandomCountriesToSelectedLand();
+    } else {
+        QMessageBox::information(this, tr("Fill Area"),
+                                 tr("Select a country or land area first."));
+    }
+}
+
+void MainWindow::addRandomCountriesToSelectedLand()
+{
+    if (!m_selected || m_selected->kind() != FeatureKind::Land) {
+        QMessageBox::information(this, tr("Countries"),
+                                 tr("Select a land area first, then add countries to it."));
+        return;
+    }
+
+    bool ok = false;
+    const int count = QInputDialog::getInt(this, tr("Add Random Countries"),
+                                           tr("How many countries?"), 5, 1, 100, 1, &ok);
+    if (!ok)
+        return;
+    fillLandWithCountries(m_selected, count);
+}
+
 void MainWindow::fillCountryWithRegions(MapFeature *country, int count)
 {
     const QString title = country->name.isEmpty() ? tr("this country") : country->name;
 
-    QVector<MapFeature *> existing;
+    QVector<QPolygonF> blocked;
     for (QGraphicsItem *item : m_scene->items()) {
         auto *feature = dynamic_cast<MapFeature *>(item);
         if (feature && feature->kind() == FeatureKind::Region
             && feature->countryName == country->name) {
-            existing.append(feature);
+            blocked.append(feature->polygon());
         }
     }
 
-    if (!existing.isEmpty()) {
-        const auto answer = QMessageBox::question(
-            this, tr("Replace Regions"),
-            tr("%1 already has %2 regions. Replace them?").arg(title).arg(existing.size()));
-        if (answer != QMessageBox::Yes)
-            return;
-        for (MapFeature *region : existing)
-            delete region;
-    }
-
-    QVector<QPolygonF> pieces;
-    pieces.append(country->polygon());
-    QVector<bool> stuck;
-    stuck.fill(false, pieces.size());
-
-    while (pieces.size() < count) {
-        int best = -1;
-        double bestArea = 0.0;
-        for (int i = 0; i < pieces.size(); ++i) {
-            if (stuck.at(i))
-                continue;
-            const double area = polygonArea(pieces.at(i));
-            if (area > bestArea) {
-                bestArea = area;
-                best = i;
-            }
-        }
-        if (best < 0)
-            break;
-
-        QVector<QPolygonF> split;
-        if (!splitPolygon(pieces.at(best), split)) {
-            stuck[best] = true;
-            continue;
-        }
-
-        pieces.removeAt(best);
-        stuck.removeAt(best);
-        for (const QPolygonF &piece : split) {
-            pieces.append(piece);
-            stuck.append(false);
-        }
+    QVector<QPolygonF> pieces = fillPieces(country->polygon(), blocked, count);
+    if (pieces.isEmpty()) {
+        statusBar()->showMessage(tr("%1 is already full of regions.").arg(title), 3000);
+        return;
     }
 
     for (const QPolygonF &piece : pieces) {
-        if (piece.size() < 3)
-            continue;
         auto *region = new MapFeature(FeatureKind::Region);
         region->setPolygon(piece);
         region->name = tr("Region %1").arg(featureCount(FeatureKind::Region) + 1);
@@ -1035,7 +1095,36 @@ void MainWindow::fillCountryWithRegions(MapFeature *country, int count)
     }
 
     pushHistory();
-    statusBar()->showMessage(tr("Filled %1 with %2 regions.").arg(title).arg(pieces.size()), 3000);
+    statusBar()->showMessage(tr("Added %1 regions to %2.").arg(pieces.size()).arg(title), 3000);
+}
+
+void MainWindow::fillLandWithCountries(MapFeature *land, int count)
+{
+    const QString title = land->name.isEmpty() ? tr("this land") : land->name;
+
+    QVector<QPolygonF> blocked;
+    for (QGraphicsItem *item : m_scene->items()) {
+        auto *feature = dynamic_cast<MapFeature *>(item);
+        if (feature && feature->kind() == FeatureKind::Country)
+            blocked.append(feature->polygon());
+    }
+
+    QVector<QPolygonF> pieces = fillPieces(land->polygon(), blocked, count);
+    if (pieces.isEmpty()) {
+        statusBar()->showMessage(tr("%1 is already full of countries.").arg(title), 3000);
+        return;
+    }
+
+    for (const QPolygonF &piece : pieces) {
+        auto *country = new MapFeature(FeatureKind::Country);
+        country->setPolygon(piece);
+        country->name = tr("Country %1").arg(featureCount(FeatureKind::Country) + 1);
+        country->color = nextCountryColor();
+        m_scene->addItem(country);
+    }
+
+    pushHistory();
+    statusBar()->showMessage(tr("Added %1 countries to %2.").arg(pieces.size()).arg(title), 3000);
 }
 
 void MainWindow::addRandomTerrainAreas(int count)
@@ -1233,9 +1322,9 @@ void MainWindow::createActions()
     auto *randomAction = new QAction(tr("Random Additions..."), this);
     connect(randomAction, &QAction::triggered, this, &MainWindow::showRandomDialog);
 
-    auto *fillRegionsAction = new QAction(tr("Regions in Selected Country..."), this);
+    auto *fillRegionsAction = new QAction(tr("Fill Selected Area..."), this);
     connect(fillRegionsAction, &QAction::triggered, this,
-            &MainWindow::addRandomRegionsToSelectedCountry);
+            &MainWindow::fillSelectedArea);
 
     auto *quitAction = new QAction(tr("Quit"), this);
     quitAction->setShortcut(QKeySequence::Quit);

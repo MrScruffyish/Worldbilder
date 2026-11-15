@@ -1,0 +1,11 @@
+30. When adding random items, there should be an  option to fill it completly with N random stuff.
+31. should be possible to delete item and be asked: do you want to expand bordering items to fill the vacated space?
+32. Should be possible to write some history, facts about items. what languages are talked there, etc. Add a few of these things, but not too much. It should also be possible to add global list of languages, characteristics to select from.
+33. when exploring, should change the symbol to some walking legs or something?
+34. Should be possible to add railroad also.
+35. The settlement tool is cumbersome, perhaps not buttons at the top, but icons/buttons to the left like in many drawing programs, and you can select tool and subtool (like settlement -> town) and then that is what you place.
+36. Add possibility to fill land with random terrain. but it cant be too random. a dessert can not have a forrest as neighbour, there need to be some intermediate thing.
+37. Some terrain should be unchartered, the user should be able to change amount of unchartered. The unchartered areas should be like in a dessert, or large forrest, or mountains. but probably only in large areas. Or if there is supposed to be a lot unchartered, then perhaps fill the middle of the land with unchartered, like, dont even know if it is mountian or dessert or what.
+38. Farming landscape is also a terrain type.
+39. Glacier is also a terrain.
+40. Some auto-fill with cities, towns, villages  (like for 1 city, 2-3 towns and 6-10 villages?) Cities are not supposed to end up too close to each other, otherwise fine to place stuff anywhere. Some stuff should be snapped to coast line. some few villages could be snapped to a region/country limit but clearly on one side of it.   Fill should be done per region or for a country (fill each region then). In harsh land, there should be much fewer settlements, if any.
