@@ -26,12 +26,16 @@ Two modes, switched in the toolbar or with `F1` / `F2`:
   `Enter` closes the polygon, `Esc` cancels. Middle-drag pans while editing.
   Near a corner or border the cursor shows **click to snap** and uses that
   point. Regions are clipped to their country. `Ctrl+Z` / `Ctrl+Shift+Z` undo
-  and redo map changes.
+  and redo map changes. With **Select / Move** active, click an item to select
+  it, drag the item to move it, or drag one of its control points to reshape
+  it (a point snaps to nearby borders and slides along them). `Esc` cancels a
+  drag.
 
 Tools and shortcuts:
 
 | Tool | Key | Notes |
 | --- | --- | --- |
+| Select / Move | `M` | Click an item, drag it or one of its control points. |
 | Draw Land | `L` | Adds a land polygon on the sea. |
 | Country | `C` | Asks for a name, assigns a colour. |
 | Terrain Area | `T` | Uses the terrain selected in the toolbar combo. |

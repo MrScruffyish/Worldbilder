@@ -87,6 +87,7 @@ private:
     QAction *m_editAction = nullptr;
     QAction *m_landAction = nullptr;
     QAction *m_countryAction = nullptr;
+    QAction *m_selectAction = nullptr;
     QAction *m_terrainAction = nullptr;
     QAction *m_regionAction = nullptr;
     QAction *m_settlementAction = nullptr;

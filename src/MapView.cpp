@@ -62,6 +62,14 @@ void MapView::setTool(Tool tool)
     updateCursor();
 }
 
+void MapView::setEditSelection(MapFeature *feature)
+{
+    if (m_editSelection == feature)
+        return;
+    m_editSelection = feature;
+    viewport()->update();
+}
+
 void MapView::setWorldSize(const QSizeF &size)
 {
     scene()->setSceneRect(QRectF(QPointF(0, 0), size));
@@ -96,6 +104,8 @@ void MapView::updateCursor()
 {
     if (m_mode == Mode::Explore)
         viewport()->setCursor(Qt::OpenHandCursor);
+    else if (m_tool == Tool::None)
+        viewport()->setCursor(Qt::ArrowCursor);
     else
         viewport()->setCursor(Qt::CrossCursor);
 }
@@ -170,6 +180,40 @@ void MapView::mousePressEvent(QMouseEvent *event)
         }
     }
 
+    if (m_mode == Mode::Edit && m_tool == Tool::None && event->button() == Qt::LeftButton) {
+        const QPointF scenePos = mapToScene(event->pos());
+        const double threshold = 10.0 / qMax(zoomScale(), 0.001);
+
+        if (m_editSelection) {
+            const int index = controlPointAt(m_editSelection, scenePos, threshold);
+            if (index >= 0) {
+                m_draggingSelection = true;
+                m_dragIndex = index;
+                m_dragStartScene = scenePos;
+                m_dragOriginalPolygon = m_editSelection->polygon();
+                m_dragOriginalPoint = m_editSelection->point();
+                m_geometryChanged = false;
+                viewport()->update();
+                event->accept();
+                return;
+            }
+        }
+
+        MapFeature *feature = featureAt(scenePos);
+        setEditSelection(feature);
+        emit featureSelected(feature);
+        if (feature) {
+            m_draggingSelection = true;
+            m_dragIndex = -1;
+            m_dragStartScene = scenePos;
+            m_dragOriginalPolygon = feature->polygon();
+            m_dragOriginalPoint = feature->point();
+            m_geometryChanged = false;
+        }
+        event->accept();
+        return;
+    }
+
     QGraphicsView::mousePressEvent(event);
 }
 
@@ -180,6 +224,42 @@ void MapView::mouseMoveEvent(QMouseEvent *event)
         m_lastPan = event->pos();
         horizontalScrollBar()->setValue(horizontalScrollBar()->value() - delta.x());
         verticalScrollBar()->setValue(verticalScrollBar()->value() - delta.y());
+        event->accept();
+        return;
+    }
+
+    if (m_draggingSelection && m_editSelection) {
+        const QPointF scenePos = mapToScene(event->pos());
+        if (m_dragIndex >= 0) {
+            updateSnap(scenePos, m_editSelection);
+            const QPointF target = m_snapValid ? m_snapPoint : scenePos;
+            const QPointF original = m_editSelection->kind() == FeatureKind::Settlement
+                                         ? m_dragOriginalPoint
+                                         : m_dragOriginalPolygon.value(m_dragIndex);
+            if (QLineF(original, target).length() > 0.01)
+                m_geometryChanged = true;
+
+            if (m_editSelection->kind() == FeatureKind::Settlement) {
+                m_editSelection->setPoint(target);
+            } else {
+                QPolygonF polygon = m_dragOriginalPolygon;
+                if (m_dragIndex < polygon.size())
+                    polygon[m_dragIndex] = target;
+                m_editSelection->setPolygon(polygon);
+            }
+        } else {
+            const QPointF delta = scenePos - m_dragStartScene;
+            if (m_editSelection->kind() == FeatureKind::Settlement) {
+                m_editSelection->setPoint(m_dragOriginalPoint + delta);
+            } else {
+                QPolygonF polygon = m_dragOriginalPolygon;
+                for (QPointF &point : polygon)
+                    point += delta;
+                m_editSelection->setPolygon(polygon);
+            }
+            m_geometryChanged = true;
+        }
+        viewport()->update();
         event->accept();
         return;
     }
@@ -209,6 +289,19 @@ void MapView::mouseDoubleClickEvent(QMouseEvent *event)
 
 void MapView::keyPressEvent(QKeyEvent *event)
 {
+    if (m_draggingSelection && m_editSelection && event->key() == Qt::Key_Escape) {
+        if (m_editSelection->kind() == FeatureKind::Settlement)
+            m_editSelection->setPoint(m_dragOriginalPoint);
+        else
+            m_editSelection->setPolygon(m_dragOriginalPolygon);
+        m_draggingSelection = false;
+        m_dragIndex = -1;
+        m_geometryChanged = false;
+        viewport()->update();
+        event->accept();
+        return;
+    }
+
     if (m_drafting) {
         if (event->key() == Qt::Key_Escape) {
             cancelDraft();
@@ -232,11 +325,26 @@ void MapView::drawForeground(QPainter *painter, const QRectF &rect)
     if (scale <= 0.0)
         return;
 
-    if (!m_drafting && !m_snapValid)
+    if (!m_drafting && !m_snapValid
+        && !(m_mode == Mode::Edit && m_tool == Tool::None && m_editSelection)) {
         return;
+    }
 
     painter->save();
     painter->setRenderHint(QPainter::Antialiasing);
+
+    if (m_mode == Mode::Edit && m_tool == Tool::None && m_editSelection) {
+        const double radius = 5.0 / scale;
+        painter->setPen(QPen(QColor(0x20, 0x30, 0x3c), 1.5 / scale));
+        painter->setBrush(QColor(0xff, 0x9f, 0x1c));
+
+        if (m_editSelection->kind() == FeatureKind::Settlement) {
+            painter->drawEllipse(m_editSelection->point(), radius, radius);
+        } else {
+            for (const QPointF &point : m_editSelection->polygon())
+                painter->drawEllipse(point, radius, radius);
+        }
+    }
 
     if (m_drafting && !m_draft.isEmpty()) {
         QPen outline(QColor(0x20, 0x30, 0x3c), 0);
@@ -285,12 +393,12 @@ void MapView::drawForeground(QPainter *painter, const QRectF &rect)
     painter->restore();
 }
 
-void MapView::updateSnap(const QPointF &scenePos)
+void MapView::updateSnap(const QPointF &scenePos, const MapFeature *exclude)
 {
     m_snapValid = false;
     m_snapLabel.clear();
 
-    if (m_mode != Mode::Edit || m_tool == Tool::None)
+    if (m_mode != Mode::Edit)
         return;
 
     const double threshold = 10.0 / qMax(zoomScale(), 0.001);
@@ -305,7 +413,7 @@ void MapView::updateSnap(const QPointF &scenePos)
 
     for (QGraphicsItem *item : scene()->items()) {
         auto *feature = dynamic_cast<MapFeature *>(item);
-        if (!feature || !feature->isVisible())
+        if (!feature || !feature->isVisible() || feature == exclude)
             continue;
 
         if (feature->kind() == FeatureKind::Settlement) {
@@ -362,6 +470,35 @@ void MapView::updateSnap(const QPointF &scenePos)
     }
 }
 
+MapFeature *MapView::featureAt(const QPointF &scenePos) const
+{
+    const QList<QGraphicsItem *> items = scene()->items(scenePos);
+    for (QGraphicsItem *item : items) {
+        if (auto *feature = dynamic_cast<MapFeature *>(item)) {
+            if (feature->isVisible())
+                return feature;
+        }
+    }
+    return nullptr;
+}
+
+int MapView::controlPointAt(const MapFeature *feature, const QPointF &scenePos,
+                            double threshold) const
+{
+    if (!feature)
+        return -1;
+
+    if (feature->kind() == FeatureKind::Settlement)
+        return QLineF(scenePos, feature->point()).length() <= threshold ? 0 : -1;
+
+    const QPolygonF polygon = feature->polygon();
+    for (int i = 0; i < polygon.size(); ++i) {
+        if (QLineF(scenePos, polygon.at(i)).length() <= threshold)
+            return i;
+    }
+    return -1;
+}
+
 void MapView::finishDraft()
 {
     if (m_draft.size() < minimumDraftPoints()) {
@@ -389,6 +526,17 @@ void MapView::mouseReleaseEvent(QMouseEvent *event)
     if (event->button() == Qt::MiddleButton && m_panning) {
         m_panning = false;
         updateCursor();
+        event->accept();
+        return;
+    }
+
+    if (m_draggingSelection) {
+        m_draggingSelection = false;
+        m_dragIndex = -1;
+        m_snapValid = false;
+        if (m_geometryChanged)
+            emit featureEdited();
+        viewport()->update();
         event->accept();
         return;
     }

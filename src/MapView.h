@@ -40,6 +40,8 @@ public:
 
     void setTool(Tool tool);
     Tool tool() const { return m_tool; }
+    void setEditSelection(MapFeature *feature);
+    MapFeature *editSelection() const { return m_editSelection; }
     double zoomScale() const { return transform().m11(); }
 
     void setWorldSize(const QSizeF &size);
@@ -50,6 +52,8 @@ public:
 signals:
     void zoomChanged(double scale);
     void featureClicked(MapFeature *feature);
+    void featureSelected(MapFeature *feature);
+    void featureEdited();
     void polygonFinished(MapView::Tool tool, const QPolygonF &polygon);
     void pointChosen(MapView::Tool tool, const QPointF &point);
 
@@ -68,7 +72,10 @@ private:
     void emitZoom();
     void finishDraft();
     void cancelDraft();
-    void updateSnap(const QPointF &scenePos);
+    void updateSnap(const QPointF &scenePos, const MapFeature *exclude = nullptr);
+    MapFeature *featureAt(const QPointF &scenePos) const;
+    int controlPointAt(const MapFeature *feature, const QPointF &scenePos,
+                       double threshold) const;
     bool isLineTool() const { return m_tool == Tool::Road || m_tool == Tool::River; }
     int minimumDraftPoints() const { return isLineTool() ? 2 : 3; }
 
@@ -84,4 +91,11 @@ private:
     bool m_snapValid = false;
     QPointF m_snapPoint;
     QString m_snapLabel;
+    MapFeature *m_editSelection = nullptr;
+    bool m_draggingSelection = false;
+    int m_dragIndex = -1;
+    QPointF m_dragStartScene;
+    QPolygonF m_dragOriginalPolygon;
+    QPointF m_dragOriginalPoint;
+    bool m_geometryChanged = false;
 };

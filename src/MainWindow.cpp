@@ -189,6 +189,13 @@ MainWindow::MainWindow(QWidget *parent)
     });
     connect(m_view, &MapView::zoomChanged, this, &MainWindow::updateVisibility);
     connect(m_view, &MapView::featureClicked, this, &MainWindow::onFeatureClicked);
+    connect(m_view, &MapView::featureSelected, this, &MainWindow::selectFeature);
+    connect(m_view, &MapView::featureEdited, this, [this] {
+        if (m_selected)
+            selectFeature(m_selected);
+        pushHistory();
+        statusBar()->showMessage(tr("Item moved."), 1500);
+    });
 
     connect(m_view, &MapView::polygonFinished, this, [this](MapView::Tool tool, const QPolygonF &polygon) {
         switch (tool) {
@@ -337,6 +344,9 @@ void MainWindow::exportTravelLog()
 
 void MainWindow::selectFeature(MapFeature *feature)
 {
+    if (m_view)
+        m_view->setEditSelection(feature);
+
     if (m_selected != feature) {
         if (m_selected) {
             m_selected->highlighted = false;
@@ -1107,6 +1117,17 @@ void MainWindow::createActions()
     toolGroup->addAction(m_landAction);
     toolGroup->addAction(m_countryAction);
 
+    m_selectAction = new QAction(tr("Select / Move"), this);
+    m_selectAction->setCheckable(true);
+    m_selectAction->setChecked(true);
+    m_selectAction->setShortcut(Qt::Key_M);
+    connect(m_selectAction, &QAction::triggered, this, [this] {
+        setMode(MapView::Mode::Edit);
+        m_view->setTool(MapView::Tool::None);
+        statusBar()->showMessage(tr("Select an item or a control point and drag it. Esc cancels a drag."));
+    });
+    toolGroup->addAction(m_selectAction);
+
     m_terrainAction = new QAction(tr("Terrain Area"), this);
     m_terrainAction->setCheckable(true);
     m_terrainAction->setShortcut(Qt::Key_T);
@@ -1260,6 +1281,7 @@ void MainWindow::createActions()
     toolbar->addAction(m_exploreAction);
     toolbar->addAction(m_editAction);
     toolbar->addSeparator();
+    toolbar->addAction(m_selectAction);
     toolbar->addAction(m_landAction);
     toolbar->addAction(m_countryAction);
     toolbar->addAction(m_terrainAction);

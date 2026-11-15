@@ -1,7 +1,8 @@
 Overall rule: Do everything very simple at first, no backwards compatability, commit with terse messages when one task is done. Avoid tests for now.
 
 # TODO
-
+28. When selecting a country with some regions in it, or selecting a land with some countries in it, I need to be able to auto generate so the reminder of the item is filled  with countries or regions.
+29. be  able to select a controlpoint and choose to replace it with a new control point (like you want to snap a point to something.)
 
 # Things to ignore for now.
 Add a tool for smoothing the map (i.e. a little bit more smoth lines but still with som wiggle so it does not look like a triangle or square, but more a "natural" shape with some bends or shapes along the line.
@@ -33,3 +34,4 @@ Add a tool for smoothing the map (i.e. a little bit more smoth lines but still w
 24. When exploring in a town, you can click on another town/region/something distinct to travel there. Calculate the travel distance, weighted with terrain and update log, simple. like "walked 24 days, came to town XAA"
 25. Not sure about editing, I need to be able to select e.g. a country, and then add random regions to that. Or even edit it and say: add N random regions, they should not overlap, but fill the country with random drawn regions.
 26. When starting, I get a rectangle green landmass with rounded corners. Dont use round shapes for land masses. 
+27. It has to be clearer when editing, so I can select an item, like a region for example, or a river, or a city, and then move it, or move one of its controlpoints. If the point is snapped to something, it should move along that thing.
