@@ -61,7 +61,9 @@ terrain-weighted journey took (roughly 30 map units per day on grassland).
 `File > New World...` starts from sea or a big land area. `File > Resize
 World...` extends the map; features stay where they are. `Generate > Random
 Additions...` adds a chosen number of land, countries, regions, terrain or
-settlements for quick maps.
+settlements for quick maps. Tick **Fill the target area completely** to tile
+the selected (or first) land or country with the chosen number of countries,
+regions or terrain areas instead of placing separate blobs.
 
 ## World files
 

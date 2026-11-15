@@ -4,6 +4,7 @@
 
 #include <QAction>
 #include <QActionGroup>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -872,10 +873,17 @@ void MainWindow::showRandomDialog()
     countRow->addStretch();
     layout->addLayout(countRow);
 
-    auto addButton = [&](const QString &text, void (MainWindow::*method)(int)) {
+    auto *fillCheck = new QCheckBox(tr("Fill the target area completely"), &dialog);
+    fillCheck->setToolTip(tr("Countries, regions and terrain fill the selected or first "
+                             "matching area instead of being placed as separate blobs."));
+    layout->addWidget(fillCheck);
+
+    auto addButton = [&](const QString &text, void (MainWindow::*method)(int, bool)) {
         auto *button = new QPushButton(text, &dialog);
         connect(button, &QPushButton::clicked, this,
-                [this, countSpin, method] { (this->*method)(countSpin->value()); });
+                [this, countSpin, fillCheck, method] {
+                    (this->*method)(countSpin->value(), fillCheck->isChecked());
+                });
         layout->addWidget(button);
     };
 
@@ -951,8 +959,9 @@ QPolygonF MainWindow::randomPolygonInCountry(MapFeature *country) const
     return {};
 }
 
-void MainWindow::addRandomLand(int count)
+void MainWindow::addRandomLand(int count, bool fill)
 {
+    Q_UNUSED(fill);
     int added = 0;
     for (int i = 0; i < count; ++i) {
         const QPointF center = randomWorldPoint();
@@ -963,8 +972,29 @@ void MainWindow::addRandomLand(int count)
     statusBar()->showMessage(tr("Added %1 random land areas.").arg(added), 2500);
 }
 
-void MainWindow::addRandomCountries(int count)
+void MainWindow::addRandomCountries(int count, bool fill)
 {
+    if (fill) {
+        MapFeature *land = nullptr;
+        if (m_selected && m_selected->kind() == FeatureKind::Land) {
+            land = m_selected;
+        } else {
+            for (QGraphicsItem *item : m_scene->items()) {
+                auto *feature = dynamic_cast<MapFeature *>(item);
+                if (feature && feature->kind() == FeatureKind::Land) {
+                    land = feature;
+                    break;
+                }
+            }
+        }
+        if (!land) {
+            statusBar()->showMessage(tr("Draw some land first."), 2500);
+            return;
+        }
+        fillLandWithCountries(land, count);
+        return;
+    }
+
     int added = 0;
     for (int i = 0; i < count; ++i) {
         QPolygonF polygon;
@@ -989,8 +1019,22 @@ void MainWindow::addRandomCountries(int count)
                              2500);
 }
 
-void MainWindow::addRandomRegions(int count)
+void MainWindow::addRandomRegions(int count, bool fill)
 {
+    if (fill) {
+        MapFeature *country = nullptr;
+        if (m_selected && m_selected->kind() == FeatureKind::Country)
+            country = m_selected;
+        else
+            country = randomCountry();
+        if (!country) {
+            statusBar()->showMessage(tr("Draw a country first."), 2500);
+            return;
+        }
+        fillCountryWithRegions(country, count);
+        return;
+    }
+
     int added = 0;
     for (int i = 0; i < count; ++i) {
         MapFeature *country = randomCountry();
@@ -1127,9 +1171,60 @@ void MainWindow::fillLandWithCountries(MapFeature *land, int count)
     statusBar()->showMessage(tr("Added %1 countries to %2.").arg(pieces.size()).arg(title), 3000);
 }
 
-void MainWindow::addRandomTerrainAreas(int count)
+void MainWindow::addRandomTerrainAreas(int count, bool fill)
 {
     const QVector<TerrainType> &types = terrainTypes();
+
+    if (fill) {
+        MapFeature *target = nullptr;
+        MapFeature *land = nullptr;
+        MapFeature *country = nullptr;
+        if (m_selected
+            && (m_selected->kind() == FeatureKind::Land
+                || m_selected->kind() == FeatureKind::Country)) {
+            target = m_selected;
+        } else {
+            for (QGraphicsItem *item : m_scene->items()) {
+                auto *feature = dynamic_cast<MapFeature *>(item);
+                if (!feature)
+                    continue;
+                if (feature->kind() == FeatureKind::Land && !land)
+                    land = feature;
+                else if (feature->kind() == FeatureKind::Country && !country)
+                    country = feature;
+            }
+            target = land ? land : country;
+        }
+        if (!target) {
+            statusBar()->showMessage(tr("Draw some land first."), 2500);
+            return;
+        }
+
+        QVector<QPolygonF> blocked;
+        for (QGraphicsItem *item : m_scene->items()) {
+            auto *feature = dynamic_cast<MapFeature *>(item);
+            if (feature && feature->kind() == FeatureKind::TerrainArea)
+                blocked.append(feature->polygon());
+        }
+
+        const QVector<QPolygonF> pieces = fillPieces(target->polygon(), blocked, count);
+        if (pieces.isEmpty()) {
+            statusBar()->showMessage(tr("The area is already full of terrain."), 2500);
+            return;
+        }
+
+        for (const QPolygonF &piece : pieces) {
+            auto *area = new MapFeature(FeatureKind::TerrainArea);
+            area->setPolygon(piece);
+            area->terrain = types.at(QRandomGenerator::global()->bounded(types.size()));
+            m_scene->addItem(area);
+        }
+        pushHistory();
+        statusBar()->showMessage(tr("Filled the area with %1 terrain areas.").arg(pieces.size()),
+                                 2500);
+        return;
+    }
+
     for (int i = 0; i < count; ++i) {
         auto *area = new MapFeature(FeatureKind::TerrainArea);
         area->setPolygon(randomBlob(randomWorldPoint(),
@@ -1141,8 +1236,9 @@ void MainWindow::addRandomTerrainAreas(int count)
     statusBar()->showMessage(tr("Added %1 random terrain areas.").arg(count), 2500);
 }
 
-void MainWindow::addRandomSettlements(int count)
+void MainWindow::addRandomSettlements(int count, bool fill)
 {
+    Q_UNUSED(fill);
     for (int i = 0; i < count; ++i) {
         const auto type = static_cast<SettlementType>(QRandomGenerator::global()->bounded(3));
         const QString typeName = settlementName(type);
