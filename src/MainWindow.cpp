@@ -43,6 +43,120 @@
 namespace {
 const QColor kSeaColor(0x3d, 0x6a, 0x93);
 
+double polygonArea(const QPolygonF &polygon)
+{
+    double area = 0.0;
+    for (int i = 0; i < polygon.size(); ++i) {
+        const QPointF &a = polygon.at(i);
+        const QPointF &b = polygon.at((i + 1) % polygon.size());
+        area += a.x() * b.y() - b.x() * a.y();
+    }
+    return std::abs(area) / 2.0;
+}
+
+QPointF polygonCenter(const QPolygonF &polygon)
+{
+    double area = 0.0;
+    double cx = 0.0;
+    double cy = 0.0;
+    for (int i = 0; i < polygon.size(); ++i) {
+        const QPointF &a = polygon.at(i);
+        const QPointF &b = polygon.at((i + 1) % polygon.size());
+        const double cross = a.x() * b.y() - b.x() * a.y();
+        area += cross;
+        cx += (a.x() + b.x()) * cross;
+        cy += (a.y() + b.y()) * cross;
+    }
+    if (qFuzzyIsNull(area))
+        return polygon.boundingRect().center();
+    area *= 0.5;
+    return QPointF(cx / (6.0 * area), cy / (6.0 * area));
+}
+
+QPainterPath halfPlanePath(const QRectF &bounds, const QPointF &through, const QPointF &direction,
+                           bool positive)
+{
+    const double margin = std::max(bounds.width(), bounds.height()) * 2.0 + 100.0;
+    const QRectF big = bounds.adjusted(-margin, -margin, margin, margin);
+    const QPolygonF rect{QPointF(big.topLeft()), QPointF(big.topRight()),
+                         QPointF(big.bottomRight()), QPointF(big.bottomLeft())};
+
+    const QPointF normal(-direction.y(), direction.x());
+    const double sign = positive ? 1.0 : -1.0;
+
+    QPolygonF clipped;
+    for (int i = 0; i < rect.size(); ++i) {
+        const QPointF &a = rect.at(i);
+        const QPointF &b = rect.at((i + 1) % rect.size());
+        const double da = QPointF::dotProduct(a - through, normal) * sign;
+        const double db = QPointF::dotProduct(b - through, normal) * sign;
+
+        if (da >= 0.0)
+            clipped.append(a);
+        if ((da >= 0.0) != (db >= 0.0)) {
+            const double t = da / (da - db);
+            clipped.append(a + (b - a) * t);
+        }
+    }
+
+    QPainterPath path;
+    path.addPolygon(clipped);
+    path.closeSubpath();
+    return path;
+}
+
+bool splitPolygon(const QPolygonF &polygon, QVector<QPolygonF> &pieces)
+{
+    if (polygon.size() < 3)
+        return false;
+
+    QPainterPath subject;
+    subject.addPolygon(polygon);
+    subject.closeSubpath();
+
+    const QRectF bounds = polygon.boundingRect();
+    const QPointF center = polygonCenter(polygon);
+    const double area = polygonArea(polygon);
+    if (area <= 0.0)
+        return false;
+
+    constexpr double kPi = 3.14159265358979323846;
+    for (int attempt = 0; attempt < 12; ++attempt) {
+        const double angle = QRandomGenerator::global()->generateDouble() * kPi;
+        const QPointF direction(std::cos(angle), std::sin(angle));
+        const QPointF through = center
+                                + QPointF((QRandomGenerator::global()->generateDouble() - 0.5)
+                                              * bounds.width() * 0.3,
+                                          (QRandomGenerator::global()->generateDouble() - 0.5)
+                                              * bounds.height() * 0.3);
+
+        const QList<QPolygonF> sides[2] = {
+            subject.intersected(halfPlanePath(bounds, through, direction, true)).toFillPolygons(),
+            subject.intersected(halfPlanePath(bounds, through, direction, false)).toFillPolygons(),
+        };
+        if (sides[0].isEmpty() || sides[1].isEmpty())
+            continue;
+
+        double sideAreas[2] = {0.0, 0.0};
+        for (int side = 0; side < 2; ++side)
+            for (const QPolygonF &part : sides[side])
+                sideAreas[side] += polygonArea(part);
+
+        if (sideAreas[0] < area * 0.02 || sideAreas[1] < area * 0.02)
+            continue;
+
+        pieces.clear();
+        for (const QPolygonF &part : sides[0])
+            if (part.size() >= 3)
+                pieces.append(part);
+        for (const QPolygonF &part : sides[1])
+            if (part.size() >= 3)
+                pieces.append(part);
+        return pieces.size() >= 2;
+    }
+    return false;
+}
+
 const QColor kCountryColors[] = {
     QColor(0xd9, 0x6b, 0x5e), QColor(0x4f, 0x9d, 0xd1), QColor(0xe0, 0xb4, 0x4f),
     QColor(0x8a, 0x6f, 0xc0), QColor(0x5a, 0xa8, 0x86), QColor(0xd1, 0x7f, 0xb0),
@@ -148,6 +262,12 @@ void MainWindow::createInfoDock()
     layout->addWidget(m_editButton = new QPushButton(tr("Edit..."), widget));
     m_editButton->setEnabled(false);
     connect(m_editButton, &QPushButton::clicked, this, &MainWindow::editSelectedFeature);
+
+    m_regionsButton = new QPushButton(tr("Add Random Regions..."), widget);
+    m_regionsButton->setVisible(false);
+    connect(m_regionsButton, &QPushButton::clicked, this,
+            &MainWindow::addRandomRegionsToSelectedCountry);
+    layout->addWidget(m_regionsButton);
     layout->addStretch();
 
     m_infoDock->setWidget(widget);
@@ -235,11 +355,15 @@ void MainWindow::selectFeature(MapFeature *feature)
         m_infoDescription->clear();
         if (m_editButton)
             m_editButton->setEnabled(false);
+        if (m_regionsButton)
+            m_regionsButton->setVisible(false);
         return;
     }
 
     if (m_editButton)
         m_editButton->setEnabled(true);
+    if (m_regionsButton)
+        m_regionsButton->setVisible(feature->kind() == FeatureKind::Country);
 
     QString title = feature->name;
     if (title.isEmpty()) {
@@ -816,6 +940,94 @@ void MainWindow::addRandomRegions(int count)
                              2500);
 }
 
+void MainWindow::addRandomRegionsToSelectedCountry()
+{
+    if (!m_selected || m_selected->kind() != FeatureKind::Country) {
+        QMessageBox::information(this, tr("Regions"),
+                                 tr("Select a country first, then add regions to it."));
+        return;
+    }
+
+    bool ok = false;
+    const int count = QInputDialog::getInt(this, tr("Add Random Regions"),
+                                           tr("How many regions?"), 5, 1, 100, 1, &ok);
+    if (!ok)
+        return;
+    fillCountryWithRegions(m_selected, count);
+}
+
+void MainWindow::fillCountryWithRegions(MapFeature *country, int count)
+{
+    const QString title = country->name.isEmpty() ? tr("this country") : country->name;
+
+    QVector<MapFeature *> existing;
+    for (QGraphicsItem *item : m_scene->items()) {
+        auto *feature = dynamic_cast<MapFeature *>(item);
+        if (feature && feature->kind() == FeatureKind::Region
+            && feature->countryName == country->name) {
+            existing.append(feature);
+        }
+    }
+
+    if (!existing.isEmpty()) {
+        const auto answer = QMessageBox::question(
+            this, tr("Replace Regions"),
+            tr("%1 already has %2 regions. Replace them?").arg(title).arg(existing.size()));
+        if (answer != QMessageBox::Yes)
+            return;
+        for (MapFeature *region : existing)
+            delete region;
+    }
+
+    QVector<QPolygonF> pieces;
+    pieces.append(country->polygon());
+    QVector<bool> stuck;
+    stuck.fill(false, pieces.size());
+
+    while (pieces.size() < count) {
+        int best = -1;
+        double bestArea = 0.0;
+        for (int i = 0; i < pieces.size(); ++i) {
+            if (stuck.at(i))
+                continue;
+            const double area = polygonArea(pieces.at(i));
+            if (area > bestArea) {
+                bestArea = area;
+                best = i;
+            }
+        }
+        if (best < 0)
+            break;
+
+        QVector<QPolygonF> split;
+        if (!splitPolygon(pieces.at(best), split)) {
+            stuck[best] = true;
+            continue;
+        }
+
+        pieces.removeAt(best);
+        stuck.removeAt(best);
+        for (const QPolygonF &piece : split) {
+            pieces.append(piece);
+            stuck.append(false);
+        }
+    }
+
+    for (const QPolygonF &piece : pieces) {
+        if (piece.size() < 3)
+            continue;
+        auto *region = new MapFeature(FeatureKind::Region);
+        region->setPolygon(piece);
+        region->name = tr("Region %1").arg(featureCount(FeatureKind::Region) + 1);
+        region->countryName = country->name;
+        region->color = country->color;
+        m_scene->addItem(region);
+    }
+
+    pushHistory();
+    statusBar()->showMessage(tr("Filled %1 with %2 regions.").arg(title).arg(pieces.size()), 3000);
+}
+
 void MainWindow::addRandomTerrainAreas(int count)
 {
     const QVector<TerrainType> &types = terrainTypes();
@@ -1000,6 +1212,10 @@ void MainWindow::createActions()
     auto *randomAction = new QAction(tr("Random Additions..."), this);
     connect(randomAction, &QAction::triggered, this, &MainWindow::showRandomDialog);
 
+    auto *fillRegionsAction = new QAction(tr("Regions in Selected Country..."), this);
+    connect(fillRegionsAction, &QAction::triggered, this,
+            &MainWindow::addRandomRegionsToSelectedCountry);
+
     auto *quitAction = new QAction(tr("Quit"), this);
     quitAction->setShortcut(QKeySequence::Quit);
     connect(quitAction, &QAction::triggered, this, &QWidget::close);
@@ -1027,6 +1243,7 @@ void MainWindow::createActions()
 
     auto *generateMenu = menuBar()->addMenu(tr("&Generate"));
     generateMenu->addAction(randomAction);
+    generateMenu->addAction(fillRegionsAction);
 
     auto *viewMenu = menuBar()->addMenu(tr("&View"));
     m_viewMenu = viewMenu;

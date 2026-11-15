@@ -65,6 +65,8 @@ private:
     void addRandomLand(int count);
     void addRandomCountries(int count);
     void addRandomRegions(int count);
+    void addRandomRegionsToSelectedCountry();
+    void fillCountryWithRegions(MapFeature *country, int count);
     void addRandomTerrainAreas(int count);
     void addRandomSettlements(int count);
     QPointF randomWorldPoint() const;
@@ -99,6 +101,7 @@ private:
     QLabel *m_infoDetails = nullptr;
     QLabel *m_infoDescription = nullptr;
     QPushButton *m_editButton = nullptr;
+    QPushButton *m_regionsButton = nullptr;
     QDockWidget *m_logDock = nullptr;
     QPlainTextEdit *m_logView = nullptr;
     QMenu *m_viewMenu = nullptr;

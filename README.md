@@ -41,9 +41,13 @@ Tools and shortcuts:
 | River | `V` | Click points; roads crossing a river are drawn with bridges. |
 
 The **Info** dock shows the selected feature. **Edit...** changes its name and
-description; renaming a country updates its regions. Visiting a settlement in
-Explore mode adds a line to the **Travel Log** dock; `File > Export Travel
-Log...` or the dock's **Export...** button saves it as a text file.
+description; renaming a country updates its regions. When a country is
+selected, **Add Random Regions...** (or `Generate > Regions in Selected
+Country...`) splits it into a chosen number of non-overlapping regions that
+fill the country, replacing existing ones after confirmation. Visiting a
+settlement in Explore mode adds a line to the **Travel Log** dock; `File >
+Export Travel Log...` or the dock's **Export...** button saves it as a text
+file.
 
 In Explore mode, click a settlement to start travelling. Click another
 settlement, region or country to walk there; the log shows how many days the

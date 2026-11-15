@@ -31,3 +31,4 @@ Add a tool for smoothing the map (i.e. a little bit more smoth lines but still w
 22. Rivers would be nice to draw. They are also passible by bridges.
 23. When you explore. Write a travel log in a window (exportable/saveable as test)
 24. When exploring in a town, you can click on another town/region/something distinct to travel there. Calculate the travel distance, weighted with terrain and update log, simple. like "walked 24 days, came to town XAA"
+25. Not sure about editing, I need to be able to select e.g. a country, and then add random regions to that. Or even edit it and say: add N random regions, they should not overlap, but fill the country with random drawn regions.
