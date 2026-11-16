@@ -32,6 +32,7 @@ public:
         Settlement,
         Road,
         River,
+        Railroad,
     };
 
     explicit MapView(QGraphicsScene *scene, QWidget *parent = nullptr);
@@ -81,7 +82,10 @@ private:
     MapFeature *featureAt(const QPointF &scenePos) const;
     int controlPointAt(const MapFeature *feature, const QPointF &scenePos,
                        double threshold) const;
-    bool isLineTool() const { return m_tool == Tool::Road || m_tool == Tool::River; }
+    bool isLineTool() const
+    {
+        return m_tool == Tool::Road || m_tool == Tool::River || m_tool == Tool::Railroad;
+    }
     int minimumDraftPoints() const { return isLineTool() ? 2 : 3; }
 
     Mode m_mode = Mode::Explore;

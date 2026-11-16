@@ -16,6 +16,7 @@ enum class FeatureKind {
     Region,
     River,
     Road,
+    Railroad,
     Settlement,
 };
 

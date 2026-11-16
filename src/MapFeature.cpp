@@ -174,6 +174,9 @@ MapFeature::MapFeature(FeatureKind kind, QGraphicsItem *parent)
     case FeatureKind::Road:
         setZValue(5);
         break;
+    case FeatureKind::Railroad:
+        setZValue(5.5);
+        break;
     case FeatureKind::Settlement:
         setZValue(6);
         break;
@@ -195,6 +198,8 @@ QString MapFeature::kindName() const
         return QStringLiteral("River");
     case FeatureKind::Road:
         return QStringLiteral("Road");
+    case FeatureKind::Railroad:
+        return QStringLiteral("Railroad");
     case FeatureKind::Settlement:
         return QStringLiteral("Settlement");
     }
@@ -238,6 +243,8 @@ QString kindKey(FeatureKind kind)
         return QStringLiteral("river");
     case FeatureKind::Road:
         return QStringLiteral("road");
+    case FeatureKind::Railroad:
+        return QStringLiteral("railroad");
     case FeatureKind::Settlement:
         return QStringLiteral("settlement");
     }
@@ -298,6 +305,8 @@ MapFeature *MapFeature::fromJson(const QJsonObject &object)
         kind = FeatureKind::River;
     else if (kindText == QLatin1String("road"))
         kind = FeatureKind::Road;
+    else if (kindText == QLatin1String("railroad"))
+        kind = FeatureKind::Railroad;
     else if (kindText == QLatin1String("settlement"))
         kind = FeatureKind::Settlement;
     else
@@ -400,7 +409,10 @@ QRectF MapFeature::boundingRect() const
         return QRectF(m_point.x() - 14, m_point.y() - 16, width, 34);
     }
 
-    const qreal margin = (m_kind == FeatureKind::Road || m_kind == FeatureKind::River) ? 10.0 : 4.0;
+    const qreal margin = (m_kind == FeatureKind::Road || m_kind == FeatureKind::River
+                          || m_kind == FeatureKind::Railroad)
+                             ? 10.0
+                             : 4.0;
     QRectF rect = m_polygon.boundingRect().adjusted(-margin, -margin, margin, margin);
     if (!name.isEmpty() && (m_kind == FeatureKind::Country || m_kind == FeatureKind::Region)) {
         const QFontMetricsF metrics(labelFont());
@@ -420,7 +432,8 @@ QPainterPath MapFeature::shape() const
         path.addEllipse(m_point, 12, 12);
         return path;
     }
-    if (m_kind == FeatureKind::Road || m_kind == FeatureKind::River) {
+    if (m_kind == FeatureKind::Road || m_kind == FeatureKind::River
+        || m_kind == FeatureKind::Railroad) {
         QPainterPathStroker stroker;
         stroker.setWidth(10);
         return stroker.createStroke(polylinePath(m_polygon));
@@ -508,6 +521,30 @@ void MapFeature::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWid
         }
         break;
     }
+    case FeatureKind::Railroad: {
+        QPen casing(QColor(0x3f, 0x3f, 0x3f), 6.0);
+        casing.setCapStyle(Qt::RoundCap);
+        casing.setJoinStyle(Qt::RoundJoin);
+        painter->setPen(casing);
+        painter->setBrush(Qt::NoBrush);
+        painter->drawPath(polylinePath(m_polygon));
+
+        QPen ties(QColor(0xe6, 0xe6, 0xe6), 2.0);
+        ties.setCapStyle(Qt::FlatCap);
+        ties.setJoinStyle(Qt::RoundJoin);
+        ties.setDashPattern({1.0, 2.0});
+        painter->setPen(ties);
+        painter->drawPath(polylinePath(m_polygon));
+
+        if (scene()) {
+            for (QGraphicsItem *item : scene()->items()) {
+                auto *river = dynamic_cast<MapFeature *>(item);
+                if (river && river->kind() == FeatureKind::River)
+                    drawRoadBridges(painter, m_polygon, river->polygon());
+            }
+        }
+        break;
+    }
     case FeatureKind::Settlement: {
         painter->save();
         painter->translate(m_point);
@@ -553,7 +590,8 @@ void MapFeature::paint(QPainter *painter, const QStyleOptionGraphicsItem *, QWid
         painter->setPen(QPen(QColor(0xff, 0x9f, 0x1c), 4.0));
         if (m_kind == FeatureKind::Settlement)
             painter->drawEllipse(m_point, 13, 13);
-        else if (m_kind == FeatureKind::Road || m_kind == FeatureKind::River)
+        else if (m_kind == FeatureKind::Road || m_kind == FeatureKind::River
+                 || m_kind == FeatureKind::Railroad)
             painter->drawPath(polylinePath(m_polygon));
         else
             painter->drawPolygon(m_polygon);

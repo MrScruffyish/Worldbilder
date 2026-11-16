@@ -609,7 +609,8 @@ void MapView::updateSnap(const QPointF &scenePos, const MapFeature *exclude)
 
         const QString label = feature->kindName();
         const bool closed = feature->kind() != FeatureKind::Road
-                            && feature->kind() != FeatureKind::River;
+                            && feature->kind() != FeatureKind::River
+                            && feature->kind() != FeatureKind::Railroad;
         const int segments = closed ? polygon.size() : polygon.size() - 1;
         for (int i = 0; i < segments; ++i) {
             const QPointF &a = polygon.at(i);

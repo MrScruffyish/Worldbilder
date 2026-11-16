@@ -1,8 +1,8 @@
 # Worldbilder
 
 A small Qt6 world builder and map viewer. Draw land, countries, terrain,
-regions, roads and rivers with polygon control points, then explore the map
-with click-to-zoom previews.
+regions, roads, railroads and rivers with polygon control points, then explore
+the map with click-to-zoom previews.
 
 ## Build
 
@@ -44,7 +44,8 @@ Tools and shortcuts:
 | Region | `R` | Must be drawn inside a country. |
 | Settlement | `S` | Click a point, then choose city, town or village and a name. |
 | Road | `D` | Click points; terrain under the road weights its travel cost. |
-| River | `V` | Click points; roads crossing a river are drawn with bridges. |
+| Railroad | `I` | Click points; drawn as a dark line with light ties. |
+| River | `V` | Click points; roads and railroads crossing a river get bridges. |
 
 The **Info** dock shows the selected feature. **Edit...** changes its name and
 description; renaming a country updates its regions. The same dialog has tabs

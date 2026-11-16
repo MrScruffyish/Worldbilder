@@ -42,6 +42,7 @@ private:
     void addTerrainArea(const QPolygonF &polygon);
     void addRegion(const QPolygonF &polygon);
     void addRoad(const QPolygonF &polygon);
+    void addRailroad(const QPolygonF &polygon);
     void addRiver(const QPolygonF &polygon);
     void addSettlement(const QPointF &point);
     MapFeature *findCountryAt(const QPointF &point) const;
@@ -101,6 +102,7 @@ private:
     QAction *m_regionAction = nullptr;
     QAction *m_settlementAction = nullptr;
     QAction *m_roadAction = nullptr;
+    QAction *m_railroadAction = nullptr;
     QAction *m_riverAction = nullptr;
     QAction *m_undoAction = nullptr;
     QAction *m_redoAction = nullptr;

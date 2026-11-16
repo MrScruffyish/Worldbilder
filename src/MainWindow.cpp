@@ -312,6 +312,9 @@ MainWindow::MainWindow(QWidget *parent)
         case MapView::Tool::Road:
             addRoad(polygon);
             break;
+        case MapView::Tool::Railroad:
+            addRailroad(polygon);
+            break;
         case MapView::Tool::River:
             addRiver(polygon);
             break;
@@ -523,6 +526,13 @@ void MainWindow::selectFeature(MapFeature *feature)
     case FeatureKind::River:
         m_infoDetails->setText(tr("River"));
         break;
+    case FeatureKind::Railroad: {
+        double length = 0.0;
+        for (int i = 0; i + 1 < feature->polygon().size(); ++i)
+            length += QLineF(feature->polygon().at(i), feature->polygon().at(i + 1)).length();
+        m_infoDetails->setText(tr("Railroad, %1 px").arg(qRound(length)));
+        break;
+    }
     }
 
     QStringList blocks;
@@ -584,7 +594,8 @@ void MainWindow::onFeatureClicked(MapFeature *feature)
         break;
     }
     case FeatureKind::Road:
-    case FeatureKind::River: {
+    case FeatureKind::River:
+    case FeatureKind::Railroad: {
         const QRectF bounds = feature->polygon().boundingRect();
         m_view->zoomToRect(bounds.adjusted(-40, -40, 40, 40));
         break;
@@ -1696,6 +1707,16 @@ void MainWindow::createActions()
     });
     toolGroup->addAction(m_roadAction);
 
+    m_railroadAction = new QAction(tr("Railroad"), this);
+    m_railroadAction->setCheckable(true);
+    m_railroadAction->setShortcut(Qt::Key_I);
+    connect(m_railroadAction, &QAction::triggered, this, [this] {
+        setMode(MapView::Mode::Edit);
+        m_view->setTool(MapView::Tool::Railroad);
+        statusBar()->showMessage(tr("Draw a railroad: click points, double-click or Enter to finish."));
+    });
+    toolGroup->addAction(m_railroadAction);
+
     m_riverAction = new QAction(tr("River"), this);
     m_riverAction->setCheckable(true);
     m_riverAction->setShortcut(Qt::Key_V);
@@ -1826,6 +1847,7 @@ void MainWindow::createActions()
     toolbar->addAction(m_regionAction);
     toolbar->addAction(m_settlementAction);
     toolbar->addAction(m_roadAction);
+    toolbar->addAction(m_railroadAction);
     toolbar->addAction(m_riverAction);
     toolbar->addWidget(m_terrainCombo);
     toolbar->addSeparator();
@@ -2033,6 +2055,20 @@ void MainWindow::addRoad(const QPolygonF &polygon)
                              3000);
 }
 
+void MainWindow::addRailroad(const QPolygonF &polygon)
+{
+    auto *railroad = new MapFeature(FeatureKind::Railroad);
+    railroad->setPolygon(polygon);
+    railroad->name = tr("Railroad %1").arg(featureCount(FeatureKind::Railroad) + 1);
+    m_scene->addItem(railroad);
+    pushHistory();
+
+    double length = 0.0;
+    for (int i = 0; i + 1 < polygon.size(); ++i)
+        length += QLineF(polygon.at(i), polygon.at(i + 1)).length();
+    statusBar()->showMessage(tr("Railroad added: %1 px.").arg(qRound(length)), 2500);
+}
+
 void MainWindow::addRiver(const QPolygonF &polygon)
 {
     auto *river = new MapFeature(FeatureKind::River);
@@ -2040,7 +2076,7 @@ void MainWindow::addRiver(const QPolygonF &polygon)
     river->name = tr("River %1").arg(featureCount(FeatureKind::River) + 1);
     m_scene->addItem(river);
     pushHistory();
-    statusBar()->showMessage(tr("River added. Roads crossing it are drawn with bridges."), 2500);
+    statusBar()->showMessage(tr("River added. Roads and railroads crossing it are drawn with bridges."), 2500);
 }
 
 TerrainType MainWindow::terrainAt(const QPointF &point) const
