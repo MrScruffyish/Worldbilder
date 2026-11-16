@@ -9,10 +9,20 @@ the map with click-to-zoom previews.
 Requirements: CMake 3.21+, a C++20 compiler and Qt6 Widgets.
 
 ```sh
+make
+./build/worldbilder
+```
+
+Or without the Makefile:
+
+```sh
 cmake -S . -B build
 cmake --build build
 ./build/worldbilder
 ```
+
+`make run` builds and starts the app. `make clean` cleans the build
+directory; `make BUILD_DIR=build-debug` uses another build directory.
 
 ## Using it
 
