@@ -77,7 +77,7 @@ private:
     void fillSelectedArea();
     void fillCountryWithRegions(MapFeature *country, int count);
     void fillLandWithCountries(MapFeature *land, int count);
-    void addRandomTerrainAreas(int count, bool fill);
+    void addRandomTerrainAreas(int count, bool fill, int unchartedPercent);
     void addRandomSettlements(int count, bool fill);
     QPointF randomWorldPoint() const;
     QPolygonF randomBlob(const QPointF &center, double radius) const;

@@ -28,6 +28,7 @@ const TerrainInfo kTerrains[] = {
     {TerrainType::Mountains, "Mountains", QColor(0x9a, 0x93, 0x8b)},
     {TerrainType::Water, "Water", QColor(0x4f, 0x83, 0xb8)},
     {TerrainType::Swamp, "Swamp", QColor(0x6c, 0x7f, 0x5a)},
+    {TerrainType::Uncharted, "Uncharted", QColor(0x9d, 0x97, 0x8b)},
 };
 
 const TerrainInfo &terrainInfoFor(TerrainType terrain)
@@ -125,6 +126,8 @@ double terrainTravelCost(TerrainType terrain)
         return 5.0;
     case TerrainType::Swamp:
         return 2.5;
+    case TerrainType::Uncharted:
+        return 1.6;
     }
     return 1.0;
 }
@@ -134,6 +137,7 @@ const QVector<TerrainType> &terrainTypes()
     static const QVector<TerrainType> types = {
         TerrainType::Grass, TerrainType::Forest, TerrainType::Desert,
         TerrainType::Mountains, TerrainType::Water, TerrainType::Swamp,
+        TerrainType::Uncharted,
     };
     return types;
 }
@@ -335,7 +339,7 @@ MapFeature *MapFeature::fromJson(const QJsonObject &object)
 
     const int terrain = object.value(QStringLiteral("terrain")).toInt();
     if (terrain >= static_cast<int>(TerrainType::Grass)
-        && terrain <= static_cast<int>(TerrainType::Swamp)) {
+        && terrain <= static_cast<int>(TerrainType::Uncharted)) {
         feature->terrain = static_cast<TerrainType>(terrain);
     }
 

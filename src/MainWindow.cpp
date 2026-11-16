@@ -139,6 +139,7 @@ bool terrainCanBorder(TerrainType a, TerrainType b)
     switch (a) {
     case TerrainType::Grass:
     case TerrainType::Water:
+    case TerrainType::Uncharted:
         return true;
     case TerrainType::Forest:
         return b != TerrainType::Desert;
@@ -163,6 +164,8 @@ TerrainType compatibleTerrain(const QPolygonF &polygon, const QVector<MapFeature
 
     QVector<TerrainType> candidates;
     for (TerrainType type : terrainTypes()) {
+        if (type == TerrainType::Uncharted)
+            continue;
         bool compatible = true;
         for (TerrainType neighbour : neighbours) {
             if (!terrainCanBorder(type, neighbour)) {
@@ -1303,6 +1306,17 @@ void MainWindow::showRandomDialog()
                              "matching area instead of being placed as separate blobs."));
     layout->addWidget(fillCheck);
 
+    auto *unchartedRow = new QHBoxLayout;
+    unchartedRow->addWidget(new QLabel(tr("Uncharted terrain:"), &dialog));
+    auto *unchartedSpin = new QSpinBox(&dialog);
+    unchartedSpin->setRange(0, 100);
+    unchartedSpin->setValue(15);
+    unchartedSpin->setSuffix(tr(" %"));
+    unchartedSpin->setToolTip(tr("Share of the generated terrain left uncharted."));
+    unchartedRow->addWidget(unchartedSpin);
+    unchartedRow->addStretch();
+    layout->addLayout(unchartedRow);
+
     auto addButton = [&](const QString &text, void (MainWindow::*method)(int, bool)) {
         auto *button = new QPushButton(text, &dialog);
         connect(button, &QPushButton::clicked, this,
@@ -1315,7 +1329,15 @@ void MainWindow::showRandomDialog()
     addButton(tr("Add random land"), &MainWindow::addRandomLand);
     addButton(tr("Add random countries"), &MainWindow::addRandomCountries);
     addButton(tr("Add random regions"), &MainWindow::addRandomRegions);
-    addButton(tr("Add random terrain"), &MainWindow::addRandomTerrainAreas);
+
+    auto *terrainButton = new QPushButton(tr("Add random terrain"), &dialog);
+    connect(terrainButton, &QPushButton::clicked, this,
+            [this, countSpin, fillCheck, unchartedSpin] {
+                addRandomTerrainAreas(countSpin->value(), fillCheck->isChecked(),
+                                      unchartedSpin->value());
+            });
+    layout->addWidget(terrainButton);
+
     addButton(tr("Add random settlements"), &MainWindow::addRandomSettlements);
 
     auto *closeButton = new QPushButton(tr("Close"), &dialog);
@@ -1596,7 +1618,7 @@ void MainWindow::fillLandWithCountries(MapFeature *land, int count)
     statusBar()->showMessage(tr("Added %1 countries to %2.").arg(pieces.size()).arg(title), 3000);
 }
 
-void MainWindow::addRandomTerrainAreas(int count, bool fill)
+void MainWindow::addRandomTerrainAreas(int count, bool fill, int unchartedPercent)
 {
     QVector<MapFeature *> terrainAreas;
     for (QGraphicsItem *item : m_scene->items()) {
@@ -1604,6 +1626,8 @@ void MainWindow::addRandomTerrainAreas(int count, bool fill)
         if (feature && feature->kind() == FeatureKind::TerrainArea)
             terrainAreas.append(feature);
     }
+
+    const int percent = qBound(0, unchartedPercent, 100);
 
     if (fill) {
         MapFeature *target = nullptr;
@@ -1640,30 +1664,100 @@ void MainWindow::addRandomTerrainAreas(int count, bool fill)
             return;
         }
 
-        for (const QPolygonF &piece : pieces) {
+        // Leave a share of the area uncharted, keeping it in one large central
+        // block rather than many small patches.
+        QVector<char> uncharted(pieces.size(), 0);
+        double totalArea = 0.0;
+        for (const QPolygonF &piece : pieces)
+            totalArea += polygonArea(piece);
+        const double unchartedArea = totalArea * percent / 100.0;
+
+        QVector<int> order;
+        for (int i = 0; i < pieces.size(); ++i)
+            order.append(i);
+        if (percent >= 100) {
+            for (int i = 0; i < pieces.size(); ++i)
+                uncharted[i] = 1;
+        } else if (unchartedArea > 0.0) {
+            const QPointF center = polygonCenter(target->polygon());
+            std::sort(order.begin(), order.end(), [&](int a, int b) {
+                return QLineF(center, polygonCenter(pieces.at(a))).length()
+                       < QLineF(center, polygonCenter(pieces.at(b))).length();
+            });
+            double taken = 0.0;
+            for (int index : order) {
+                if (taken >= unchartedArea)
+                    break;
+                uncharted[index] = 1;
+                taken += polygonArea(pieces.at(index));
+            }
+        }
+
+        QVector<int> placementOrder;
+        for (int i = 0; i < pieces.size(); ++i) {
+            if (uncharted.at(i))
+                placementOrder.append(i);
+        }
+        for (int i = 0; i < pieces.size(); ++i) {
+            if (!uncharted.at(i))
+                placementOrder.append(i);
+        }
+
+        int unchartedCount = 0;
+        for (int index : placementOrder) {
+            const QPolygonF &piece = pieces.at(index);
             auto *area = new MapFeature(FeatureKind::TerrainArea);
             area->setPolygon(piece);
-            area->terrain = compatibleTerrain(piece, terrainAreas);
+            if (uncharted.at(index)) {
+                area->terrain = TerrainType::Uncharted;
+                ++unchartedCount;
+            } else {
+                area->terrain = compatibleTerrain(piece, terrainAreas);
+            }
             m_scene->addItem(area);
             terrainAreas.append(area);
         }
         pushHistory();
-        statusBar()->showMessage(tr("Filled the area with %1 terrain areas.").arg(pieces.size()),
+        statusBar()->showMessage(tr("Filled the area with %1 terrain areas, %2 uncharted.")
+                                     .arg(pieces.size())
+                                     .arg(unchartedCount),
                                  2500);
         return;
     }
 
+    auto randomLandPoint = [this] {
+        QPointF point;
+        for (int attempt = 0; attempt < 30; ++attempt) {
+            point = randomWorldPoint();
+            if (terrainAt(point) != TerrainType::Water)
+                return point;
+        }
+        return point;
+    };
+
+    int unchartedCount = qRound(count * percent / 100.0);
+    if (percent > 0 && unchartedCount == 0)
+        unchartedCount = 1;
+    unchartedCount = qBound(0, unchartedCount, count);
+
     for (int i = 0; i < count; ++i) {
-        const QPolygonF polygon =
-            randomBlob(randomWorldPoint(), 50.0 + QRandomGenerator::global()->generateDouble() * 140.0);
+        const bool isUncharted = i < unchartedCount;
+        const double radius = isUncharted
+                                  ? 100.0 + QRandomGenerator::global()->generateDouble() * 180.0
+                                  : 50.0 + QRandomGenerator::global()->generateDouble() * 140.0;
+        const QPolygonF polygon = randomBlob(randomLandPoint(), radius);
         auto *area = new MapFeature(FeatureKind::TerrainArea);
         area->setPolygon(polygon);
-        area->terrain = compatibleTerrain(polygon, terrainAreas);
+        area->terrain = isUncharted ? TerrainType::Uncharted
+                                    : compatibleTerrain(polygon, terrainAreas);
         m_scene->addItem(area);
         terrainAreas.append(area);
     }
     pushHistory();
-    statusBar()->showMessage(tr("Added %1 random terrain areas.").arg(count), 2500);
+    statusBar()->showMessage(tr("Added %1 random terrain areas, %2 uncharted.")
+                                 .arg(count)
+                                 .arg(unchartedCount),
+                             2500);
 }
 
 void MainWindow::addRandomSettlements(int count, bool fill)
