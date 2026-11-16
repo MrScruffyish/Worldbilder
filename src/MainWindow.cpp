@@ -108,6 +108,77 @@ void snapToEdges(QPolygonF &polygon, const QPolygonF &target, double tolerance)
     }
 }
 
+/// True when two terrain areas share a stretch of border or overlap.
+bool polygonsTouch(const QPolygonF &a, const QPolygonF &b)
+{
+    if (a.size() < 3 || b.size() < 3)
+        return false;
+
+    QPainterPath aPath;
+    aPath.addPolygon(a);
+    aPath.closeSubpath();
+    QPainterPath bPath;
+    bPath.addPolygon(b);
+    bPath.closeSubpath();
+
+    if (!aPath.boundingRect().adjusted(-2, -2, 2, 2).intersects(bPath.boundingRect()))
+        return false;
+
+    QPainterPathStroker stroker;
+    stroker.setWidth(2.0);
+    return aPath.intersects(stroker.createStroke(bPath))
+           || bPath.intersects(stroker.createStroke(aPath));
+}
+
+/// Terrain only meets terrain it can fade into. Desert and forest always keep
+/// at least grassland, mountains or water between them.
+bool terrainCanBorder(TerrainType a, TerrainType b)
+{
+    if (a == b)
+        return true;
+    switch (a) {
+    case TerrainType::Grass:
+    case TerrainType::Water:
+        return true;
+    case TerrainType::Forest:
+        return b != TerrainType::Desert;
+    case TerrainType::Desert:
+        return b != TerrainType::Forest && b != TerrainType::Swamp;
+    case TerrainType::Mountains:
+        return b != TerrainType::Swamp;
+    case TerrainType::Swamp:
+        return b != TerrainType::Desert && b != TerrainType::Mountains;
+    }
+    return true;
+}
+
+/// Pick a random terrain that is compatible with every area it touches.
+TerrainType compatibleTerrain(const QPolygonF &polygon, const QVector<MapFeature *> &terrainAreas)
+{
+    QVector<TerrainType> neighbours;
+    for (const MapFeature *area : terrainAreas) {
+        if (polygonsTouch(polygon, area->polygon()))
+            neighbours.append(area->terrain);
+    }
+
+    QVector<TerrainType> candidates;
+    for (TerrainType type : terrainTypes()) {
+        bool compatible = true;
+        for (TerrainType neighbour : neighbours) {
+            if (!terrainCanBorder(type, neighbour)) {
+                compatible = false;
+                break;
+            }
+        }
+        if (compatible)
+            candidates.append(type);
+    }
+
+    if (candidates.isEmpty())
+        return TerrainType::Grass;
+    return candidates.at(QRandomGenerator::global()->bounded(candidates.size()));
+}
+
 QPainterPath halfPlanePath(const QRectF &bounds, const QPointF &through, const QPointF &direction,
                            bool positive)
 {
@@ -1527,7 +1598,12 @@ void MainWindow::fillLandWithCountries(MapFeature *land, int count)
 
 void MainWindow::addRandomTerrainAreas(int count, bool fill)
 {
-    const QVector<TerrainType> &types = terrainTypes();
+    QVector<MapFeature *> terrainAreas;
+    for (QGraphicsItem *item : m_scene->items()) {
+        auto *feature = dynamic_cast<MapFeature *>(item);
+        if (feature && feature->kind() == FeatureKind::TerrainArea)
+            terrainAreas.append(feature);
+    }
 
     if (fill) {
         MapFeature *target = nullptr;
@@ -1555,11 +1631,8 @@ void MainWindow::addRandomTerrainAreas(int count, bool fill)
         }
 
         QVector<QPolygonF> blocked;
-        for (QGraphicsItem *item : m_scene->items()) {
-            auto *feature = dynamic_cast<MapFeature *>(item);
-            if (feature && feature->kind() == FeatureKind::TerrainArea)
-                blocked.append(feature->polygon());
-        }
+        for (MapFeature *area : terrainAreas)
+            blocked.append(area->polygon());
 
         const QVector<QPolygonF> pieces = fillPieces(target->polygon(), blocked, count);
         if (pieces.isEmpty()) {
@@ -1570,8 +1643,9 @@ void MainWindow::addRandomTerrainAreas(int count, bool fill)
         for (const QPolygonF &piece : pieces) {
             auto *area = new MapFeature(FeatureKind::TerrainArea);
             area->setPolygon(piece);
-            area->terrain = types.at(QRandomGenerator::global()->bounded(types.size()));
+            area->terrain = compatibleTerrain(piece, terrainAreas);
             m_scene->addItem(area);
+            terrainAreas.append(area);
         }
         pushHistory();
         statusBar()->showMessage(tr("Filled the area with %1 terrain areas.").arg(pieces.size()),
@@ -1580,11 +1654,13 @@ void MainWindow::addRandomTerrainAreas(int count, bool fill)
     }
 
     for (int i = 0; i < count; ++i) {
+        const QPolygonF polygon =
+            randomBlob(randomWorldPoint(), 50.0 + QRandomGenerator::global()->generateDouble() * 140.0);
         auto *area = new MapFeature(FeatureKind::TerrainArea);
-        area->setPolygon(randomBlob(randomWorldPoint(),
-                                    50.0 + QRandomGenerator::global()->generateDouble() * 140.0));
-        area->terrain = types.at(QRandomGenerator::global()->bounded(types.size()));
+        area->setPolygon(polygon);
+        area->terrain = compatibleTerrain(polygon, terrainAreas);
         m_scene->addItem(area);
+        terrainAreas.append(area);
     }
     pushHistory();
     statusBar()->showMessage(tr("Added %1 random terrain areas.").arg(count), 2500);

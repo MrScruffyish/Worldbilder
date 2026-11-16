@@ -73,7 +73,9 @@ World...` extends the map; features stay where they are. `Generate > Random
 Additions...` adds a chosen number of land, countries, regions, terrain or
 settlements for quick maps. Tick **Fill the target area completely** to tile
 the selected (or first) land or country with the chosen number of countries,
-regions or terrain areas instead of placing separate blobs.
+regions or terrain areas instead of placing separate blobs. Random terrain
+only meets compatible types, so desert and forest always keep grassland,
+mountains or water between them.
 
 ## World files
 
