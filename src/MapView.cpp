@@ -3,6 +3,7 @@
 #include "MapFeature.h"
 
 #include <QContextMenuEvent>
+#include <QCursor>
 #include <QGraphicsScene>
 #include <QFontMetricsF>
 #include <QKeyEvent>
@@ -11,12 +12,42 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
+#include <QPixmap>
 #include <QScrollBar>
 #include <QWheelEvent>
 
 #include <algorithm>
 
 namespace {
+
+QCursor walkingCursor()
+{
+    static const QCursor cursor = [] {
+        QPixmap pixmap(32, 32);
+        pixmap.fill(Qt::transparent);
+        QPainter painter(&pixmap);
+        painter.setRenderHint(QPainter::Antialiasing);
+
+        QPainterPath legs;
+        legs.moveTo(16, 4);
+        legs.lineTo(11, 14);
+        legs.lineTo(8, 23);
+        legs.lineTo(2, 27);
+        legs.moveTo(16, 4);
+        legs.lineTo(21, 14);
+        legs.lineTo(25, 22);
+        legs.lineTo(31, 26);
+
+        painter.setPen(QPen(Qt::white, 7.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        painter.drawPath(legs);
+        painter.setPen(QPen(QColor(0x20, 0x30, 0x3c), 3.0, Qt::SolidLine, Qt::RoundCap,
+                            Qt::RoundJoin));
+        painter.drawPath(legs);
+        painter.end();
+        return QCursor(pixmap, 16, 4);
+    }();
+    return cursor;
+}
 
 qreal distanceToSegment(const QPointF &point, const QPointF &a, const QPointF &b, QPointF *closest)
 {
@@ -120,7 +151,7 @@ void MapView::zoomBy(double factor)
 void MapView::updateCursor()
 {
     if (m_mode == Mode::Explore)
-        viewport()->setCursor(Qt::OpenHandCursor);
+        viewport()->setCursor(walkingCursor());
     else if (m_replacingPoint)
         viewport()->setCursor(Qt::CrossCursor);
     else if (m_tool == Tool::None)
@@ -326,6 +357,11 @@ void MapView::mouseMoveEvent(QMouseEvent *event)
     }
 
     QGraphicsView::mouseMoveEvent(event);
+
+    // ScrollHandDrag resets the cursor to an open hand; keep the walking
+    // symbol while exploring (but not while the map is being dragged).
+    if (m_mode == Mode::Explore && !(event->buttons() & Qt::LeftButton))
+        updateCursor();
 }
 
 void MapView::mouseDoubleClickEvent(QMouseEvent *event)
@@ -705,4 +741,7 @@ void MapView::mouseReleaseEvent(QMouseEvent *event)
     }
 
     QGraphicsView::mouseReleaseEvent(event);
+
+    if (m_mode == Mode::Explore)
+        updateCursor();
 }

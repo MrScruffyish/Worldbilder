@@ -1,7 +1,6 @@
 Overall rule: Do everything very simple at first, no backwards compatability, commit with terse messages when one task is done. Avoid tests for now.
 
 # TODO
-33. when exploring, should change the symbol to some walking legs or something?
 34. Should be possible to add railroad also.
 35. The settlement tool is cumbersome, perhaps not buttons at the top, but icons/buttons to the left like in many drawing programs, and you can select tool and subtool (like settlement -> town) and then that is what you place.
 36. Add possibility to fill land with random terrain. but it cant be too random. a dessert can not have a forrest as neighbour, there need to be some intermediate thing.
@@ -27,3 +26,4 @@ Add a tool for smoothing the map (i.e. a little bit more smoth lines but still w
 30. When adding random items, there should be an  option to fill it completly with N random stuff.
 31. should be possible to delete item and be asked: do you want to expand bordering items to fill the vacated space?
 32. Should be possible to write some history, facts about items. what languages are talked there, etc. Add a few of these things, but not too much. It should also be possible to add global list of languages, characteristics to select from.
+33. when exploring, should change the symbol to some walking legs or something?
