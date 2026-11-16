@@ -7,6 +7,7 @@
 #include <QList>
 #include <QMainWindow>
 #include <QSizeF>
+#include <QStringList>
 #include <QVector>
 
 class QAction;
@@ -55,6 +56,8 @@ private:
     void onFeatureClicked(MapFeature *feature);
     void updateVisibility(double scale);
     void editSelectedFeature();
+    void editGlobalLists();
+    void resetGlobalLists();
     void deleteSelectedFeature();
     void expandIntoVacated(const QPolygonF &vacated, const QVector<MapFeature *> &siblings);
     void saveWorld();
@@ -116,6 +119,8 @@ private:
     MapFeature *m_selected = nullptr;
     MapFeature *m_travelOrigin = nullptr;
     QString m_currentFile;
+    QStringList m_languages;
+    QStringList m_characteristics;
     QList<QJsonObject> m_history;
     int m_historyIndex = -1;
     bool m_restoring = false;

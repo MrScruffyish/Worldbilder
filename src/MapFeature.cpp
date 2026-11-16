@@ -253,6 +253,15 @@ QJsonObject MapFeature::toJson() const
     object.insert(QStringLiteral("name"), name);
     if (!description.isEmpty())
         object.insert(QStringLiteral("description"), description);
+    if (!history.isEmpty())
+        object.insert(QStringLiteral("history"), history);
+    if (!facts.isEmpty())
+        object.insert(QStringLiteral("facts"), facts);
+    if (!languages.isEmpty())
+        object.insert(QStringLiteral("languages"), QJsonArray::fromStringList(languages));
+    if (!characteristics.isEmpty())
+        object.insert(QStringLiteral("characteristics"),
+                      QJsonArray::fromStringList(characteristics));
     if (!countryName.isEmpty())
         object.insert(QStringLiteral("country"), countryName);
     if (color.isValid())
@@ -297,6 +306,18 @@ MapFeature *MapFeature::fromJson(const QJsonObject &object)
     auto *feature = new MapFeature(kind);
     feature->name = object.value(QStringLiteral("name")).toString();
     feature->description = object.value(QStringLiteral("description")).toString();
+    feature->history = object.value(QStringLiteral("history")).toString();
+    feature->facts = object.value(QStringLiteral("facts")).toString();
+    for (const QJsonValue &value : object.value(QStringLiteral("languages")).toArray()) {
+        const QString language = value.toString();
+        if (!language.isEmpty())
+            feature->languages.append(language);
+    }
+    for (const QJsonValue &value : object.value(QStringLiteral("characteristics")).toArray()) {
+        const QString characteristic = value.toString();
+        if (!characteristic.isEmpty())
+            feature->characteristics.append(characteristic);
+    }
     feature->countryName = object.value(QStringLiteral("country")).toString();
 
     const QString colorText = object.value(QStringLiteral("color")).toString();

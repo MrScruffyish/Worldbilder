@@ -6,6 +6,7 @@
 #include <QJsonObject>
 #include <QPolygonF>
 #include <QString>
+#include <QStringList>
 #include <QVector>
 
 enum class FeatureKind {
@@ -60,6 +61,10 @@ public:
 
     QString name;
     QString description;
+    QString history;
+    QString facts;
+    QStringList languages;
+    QStringList characteristics;
     QString countryName;
     QColor color;
     TerrainType terrain = TerrainType::Grass;

@@ -46,7 +46,10 @@ Tools and shortcuts:
 | River | `V` | Click points; roads crossing a river are drawn with bridges. |
 
 The **Info** dock shows the selected feature. **Edit...** changes its name and
-description; renaming a country updates its regions. **Delete...** (or the
+description; renaming a country updates its regions. The same dialog has tabs
+for **History and facts** and **Culture**, where languages and characteristics
+can be ticked. Edit > **Languages and Characteristics...** manages the global
+choices; they are saved with the world. **Delete...** (or the
 `Delete` key with Select / Move active) removes it. Deleting a country also
 deletes its regions. For land, countries, regions and terrain areas you can
 choose to let the bordering item with the longest shared border expand into

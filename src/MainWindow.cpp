@@ -14,6 +14,7 @@
 #include <QFileInfo>
 #include <QFont>
 #include <QFormLayout>
+#include <QGroupBox>
 #include <QGraphicsScene>
 #include <QHBoxLayout>
 #include <QIcon>
@@ -23,6 +24,7 @@
 #include <QJsonObject>
 #include <QLabel>
 #include <QLineEdit>
+#include <QListWidget>
 #include <QLineF>
 #include <QMenu>
 #include <QMenuBar>
@@ -35,6 +37,7 @@
 #include <QRandomGenerator>
 #include <QSpinBox>
 #include <QStatusBar>
+#include <QTabWidget>
 #include <QTimer>
 #include <QToolBar>
 #include <QVBoxLayout>
@@ -263,6 +266,7 @@ MainWindow::MainWindow(QWidget *parent)
     setWindowTitle(tr("Worldbilder"));
     resize(1200, 800);
 
+    resetGlobalLists();
     createScene();
     createActions();
 
@@ -521,8 +525,20 @@ void MainWindow::selectFeature(MapFeature *feature)
         break;
     }
 
-    m_infoDescription->setText(feature->description.isEmpty() ? tr("No description.")
-                                                              : feature->description);
+    QStringList blocks;
+    if (!feature->description.isEmpty())
+        blocks.append(feature->description);
+    if (!feature->history.isEmpty())
+        blocks.append(tr("History: %1").arg(feature->history));
+    if (!feature->facts.isEmpty())
+        blocks.append(tr("Facts: %1").arg(feature->facts));
+    if (!feature->languages.isEmpty())
+        blocks.append(tr("Languages: %1").arg(feature->languages.join(QStringLiteral(", "))));
+    if (!feature->characteristics.isEmpty()) {
+        blocks.append(tr("Characteristics: %1")
+                          .arg(feature->characteristics.join(QStringLiteral(", "))));
+    }
+    m_infoDescription->setText(blocks.isEmpty() ? tr("No description.") : blocks.join("\n\n"));
 }
 
 void MainWindow::onFeatureClicked(MapFeature *feature)
@@ -590,6 +606,109 @@ void MainWindow::updateVisibility(double scale)
     }
 }
 
+QListWidget *makeCheckList(QWidget *parent, const QStringList &available,
+                           const QStringList &selected)
+{
+    auto *list = new QListWidget(parent);
+    QStringList values = available;
+    for (const QString &value : selected) {
+        if (!values.contains(value))
+            values.append(value);
+    }
+    for (const QString &value : values) {
+        auto *item = new QListWidgetItem(value, list);
+        item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
+        item->setCheckState(selected.contains(value) ? Qt::Checked : Qt::Unchecked);
+    }
+    return list;
+}
+
+QStringList checkedValues(const QListWidget *list)
+{
+    QStringList values;
+    for (int i = 0; i < list->count(); ++i) {
+        const QListWidgetItem *item = list->item(i);
+        if (item->checkState() == Qt::Checked)
+            values.append(item->text());
+    }
+    return values;
+}
+
+void MainWindow::resetGlobalLists()
+{
+    m_languages = {tr("Common"), tr("Elvish"), tr("Dwarvish")};
+    m_characteristics = {tr("Coastal"), tr("Mountainous"), tr("Fertile"), tr("Trade hub"),
+                         tr("Warlike")};
+}
+
+void MainWindow::editGlobalLists()
+{
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Languages and Characteristics"));
+    dialog.resize(520, 420);
+
+    auto *layout = new QHBoxLayout(&dialog);
+    QListWidget *languageList = nullptr;
+    QListWidget *characteristicList = nullptr;
+
+    auto makeEditor = [&](const QString &title, const QStringList &values,
+                          QListWidget **result) {
+        auto *box = new QGroupBox(title, &dialog);
+        auto *boxLayout = new QVBoxLayout(box);
+
+        auto *list = new QListWidget(box);
+        list->addItems(values);
+        boxLayout->addWidget(list);
+
+        auto *row = new QHBoxLayout;
+        auto *edit = new QLineEdit(box);
+        edit->setPlaceholderText(tr("New..."));
+        auto *add = new QPushButton(tr("Add"), box);
+        auto *remove = new QPushButton(tr("Remove"), box);
+        row->addWidget(edit);
+        row->addWidget(add);
+        row->addWidget(remove);
+        boxLayout->addLayout(row);
+
+        auto addValue = [list, edit] {
+            const QString text = edit->text().trimmed();
+            if (text.isEmpty())
+                return;
+            if (list->findItems(text, Qt::MatchFixedString).isEmpty())
+                list->addItem(text);
+            edit->clear();
+        };
+        connect(add, &QPushButton::clicked, box, addValue);
+        connect(edit, &QLineEdit::returnPressed, box, addValue);
+        connect(remove, &QPushButton::clicked, box, [list] { delete list->currentItem(); });
+
+        layout->addWidget(box);
+        *result = list;
+    };
+
+    makeEditor(tr("Languages"), m_languages, &languageList);
+    makeEditor(tr("Characteristics"), m_characteristics, &characteristicList);
+
+    auto *buttonRow = new QVBoxLayout;
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    buttonRow->addStretch();
+    buttonRow->addWidget(buttons);
+    layout->addLayout(buttonRow);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+
+    if (dialog.exec() != QDialog::Accepted)
+        return;
+
+    m_languages.clear();
+    for (int i = 0; i < languageList->count(); ++i)
+        m_languages.append(languageList->item(i)->text());
+    m_characteristics.clear();
+    for (int i = 0; i < characteristicList->count(); ++i)
+        m_characteristics.append(characteristicList->item(i)->text());
+    pushHistory();
+}
+
 void MainWindow::editSelectedFeature()
 {
     if (!m_selected)
@@ -600,16 +719,48 @@ void MainWindow::editSelectedFeature()
 
     QDialog dialog(this);
     dialog.setWindowTitle(tr("Edit %1").arg(feature->kindName()));
-    auto *layout = new QFormLayout(&dialog);
+    dialog.resize(480, 560);
 
-    auto *nameEdit = new QLineEdit(feature->name, &dialog);
-    auto *descriptionEdit = new QPlainTextEdit(feature->description, &dialog);
-    descriptionEdit->setMinimumSize(340, 170);
-    layout->addRow(tr("Name:"), nameEdit);
-    layout->addRow(tr("Description:"), descriptionEdit);
+    auto *layout = new QVBoxLayout(&dialog);
+    auto *tabs = new QTabWidget(&dialog);
 
+    auto *basicTab = new QWidget(tabs);
+    auto *basicForm = new QFormLayout(basicTab);
+    auto *nameEdit = new QLineEdit(feature->name, basicTab);
+    auto *descriptionEdit = new QPlainTextEdit(feature->description, basicTab);
+    descriptionEdit->setMinimumSize(340, 150);
+    basicForm->addRow(tr("Name:"), nameEdit);
+    basicForm->addRow(tr("Description:"), descriptionEdit);
+    tabs->addTab(basicTab, tr("Basic"));
+
+    auto *loreTab = new QWidget(tabs);
+    auto *loreForm = new QFormLayout(loreTab);
+    auto *historyEdit = new QPlainTextEdit(feature->history, loreTab);
+    historyEdit->setMinimumSize(340, 120);
+    auto *factsEdit = new QPlainTextEdit(feature->facts, loreTab);
+    factsEdit->setMinimumSize(340, 120);
+    loreForm->addRow(tr("History:"), historyEdit);
+    loreForm->addRow(tr("Facts:"), factsEdit);
+    tabs->addTab(loreTab, tr("History and facts"));
+
+    auto *cultureTab = new QWidget(tabs);
+    auto *cultureLayout = new QVBoxLayout(cultureTab);
+    cultureLayout->addWidget(new QLabel(tr("Languages:"), cultureTab));
+    auto *languageList = makeCheckList(cultureTab, m_languages, feature->languages);
+    cultureLayout->addWidget(languageList);
+    cultureLayout->addWidget(new QLabel(tr("Characteristics:"), cultureTab));
+    auto *characteristicList =
+        makeCheckList(cultureTab, m_characteristics, feature->characteristics);
+    cultureLayout->addWidget(characteristicList);
+    auto *hint = new QLabel(
+        tr("Edit the choices from Edit > Languages and Characteristics..."), cultureTab);
+    hint->setWordWrap(true);
+    cultureLayout->addWidget(hint);
+    tabs->addTab(cultureTab, tr("Culture"));
+
+    layout->addWidget(tabs);
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
-    layout->addRow(buttons);
+    layout->addWidget(buttons);
     connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
 
@@ -618,6 +769,10 @@ void MainWindow::editSelectedFeature()
 
     feature->name = nameEdit->text().trimmed();
     feature->description = descriptionEdit->toPlainText().trimmed();
+    feature->history = historyEdit->toPlainText().trimmed();
+    feature->facts = factsEdit->toPlainText().trimmed();
+    feature->languages = checkedValues(languageList);
+    feature->characteristics = checkedValues(characteristicList);
 
     if (feature->kind() == FeatureKind::Country && feature->name != oldName) {
         for (QGraphicsItem *item : m_scene->items()) {
@@ -898,6 +1053,9 @@ QJsonObject MainWindow::worldToJson() const
     root.insert(QStringLiteral("version"), 1);
     root.insert(QStringLiteral("width"), m_worldSize.width());
     root.insert(QStringLiteral("height"), m_worldSize.height());
+    root.insert(QStringLiteral("languages"), QJsonArray::fromStringList(m_languages));
+    root.insert(QStringLiteral("characteristics"),
+                QJsonArray::fromStringList(m_characteristics));
     root.insert(QStringLiteral("features"), features);
     return root;
 }
@@ -906,6 +1064,24 @@ void MainWindow::restoreFromJson(const QJsonObject &root)
 {
     const double width = root.value(QStringLiteral("width")).toDouble();
     const double height = root.value(QStringLiteral("height")).toDouble();
+
+    if (root.contains(QStringLiteral("languages"))
+        || root.contains(QStringLiteral("characteristics"))) {
+        m_languages.clear();
+        for (const QJsonValue &value : root.value(QStringLiteral("languages")).toArray()) {
+            const QString language = value.toString();
+            if (!language.isEmpty())
+                m_languages.append(language);
+        }
+        m_characteristics.clear();
+        for (const QJsonValue &value : root.value(QStringLiteral("characteristics")).toArray()) {
+            const QString characteristic = value.toString();
+            if (!characteristic.isEmpty())
+                m_characteristics.append(characteristic);
+        }
+    } else {
+        resetGlobalLists();
+    }
 
     QVector<MapFeature *> features;
     const QJsonArray featureArray = root.value(QStringLiteral("features")).toArray();
@@ -1555,6 +1731,9 @@ void MainWindow::createActions()
     auto *deleteAction = new QAction(tr("Delete Selected Item..."), this);
     connect(deleteAction, &QAction::triggered, this, &MainWindow::deleteSelectedFeature);
 
+    auto *globalListsAction = new QAction(tr("Languages and Characteristics..."), this);
+    connect(globalListsAction, &QAction::triggered, this, &MainWindow::editGlobalLists);
+
     auto *zoomInAction = new QAction(tr("Zoom In"), this);
     zoomInAction->setShortcut(QKeySequence::ZoomIn);
     connect(zoomInAction, &QAction::triggered, this, [this] { m_view->zoomBy(1.25); });
@@ -1618,6 +1797,8 @@ void MainWindow::createActions()
     editMenu->addAction(m_redoAction);
     editMenu->addSeparator();
     editMenu->addAction(deleteAction);
+    editMenu->addSeparator();
+    editMenu->addAction(globalListsAction);
 
     auto *generateMenu = menuBar()->addMenu(tr("&Generate"));
     generateMenu->addAction(randomAction);
@@ -1673,6 +1854,7 @@ void MainWindow::newWorld(bool land)
 {
     selectFeature(nullptr);
     m_travelOrigin = nullptr;
+    resetGlobalLists();
     m_view->setTool(m_view->tool());
     m_scene->clear();
     m_scene->setSceneRect(QRectF(QPointF(0, 0), m_worldSize));
