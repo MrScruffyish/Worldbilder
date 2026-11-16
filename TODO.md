@@ -1,7 +1,6 @@
 Overall rule: Do everything very simple at first, no backwards compatability, commit with terse messages when one task is done. Avoid tests for now.
 
 # TODO
-35. The settlement tool is cumbersome, perhaps not buttons at the top, but icons/buttons to the left like in many drawing programs, and you can select tool and subtool (like settlement -> town) and then that is what you place.
 36. Add possibility to fill land with random terrain. but it cant be too random. a dessert can not have a forrest as neighbour, there need to be some intermediate thing.
 37. Some terrain should be unchartered, the user should be able to change amount of unchartered. The unchartered areas should be like in a dessert, or large forrest, or mountains. but probably only in large areas. Or if there is supposed to be a lot unchartered, then perhaps fill the middle of the land with unchartered, like, dont even know if it is mountian or dessert or what.
 38. Farming landscape is also a terrain type.
@@ -13,6 +12,7 @@ Overall rule: Do everything very simple at first, no backwards compatability, co
 Add a tool for smoothing the map (i.e. a little bit more smoth lines but still with som wiggle so it does not look like a triangle or square, but more a "natural" shape with some bends or shapes along the line.
 
 # DONE
+35. The settlement tool is cumbersome, perhaps not buttons at the top, but icons/buttons to the left like in many drawing programs, and you can select tool and subtool (like settlement -> town) and then that is what you place.
 34. Should be possible to add railroad also.
 21. Add roads (either freehand draw or polygon) and take in to account terrain. some road can go in hills, some not has to make detour. 
 22. Rivers would be nice to draw. They are also passible by bridges.

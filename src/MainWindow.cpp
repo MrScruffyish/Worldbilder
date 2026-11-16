@@ -1693,7 +1693,7 @@ void MainWindow::createActions()
     connect(m_settlementAction, &QAction::triggered, this, [this] {
         setMode(MapView::Mode::Edit);
         m_view->setTool(MapView::Tool::Settlement);
-        statusBar()->showMessage(tr("Click on the map to place a city, town or village."));
+        statusBar()->showMessage(tr("Click on the map to place the settlement type chosen on the left."));
     });
     toolGroup->addAction(m_settlementAction);
 
@@ -1734,6 +1734,11 @@ void MainWindow::createActions()
         swatch.fill(terrainColor(terrain));
         m_terrainCombo->addItem(QIcon(swatch), terrainName(terrain), static_cast<int>(terrain));
     }
+
+    m_settlementCombo = new QComboBox(this);
+    m_settlementCombo->setToolTip(tr("Settlement type placed by the settlement tool"));
+    for (SettlementType type : {SettlementType::City, SettlementType::Town, SettlementType::Village})
+        m_settlementCombo->addItem(settlementName(type), static_cast<int>(type));
 
     auto *fitAction = new QAction(tr("Fit World"), this);
     fitAction->setShortcut(Qt::Key_F);
@@ -1840,20 +1845,30 @@ void MainWindow::createActions()
     toolbar->addAction(m_exploreAction);
     toolbar->addAction(m_editAction);
     toolbar->addSeparator();
-    toolbar->addAction(m_selectAction);
-    toolbar->addAction(m_landAction);
-    toolbar->addAction(m_countryAction);
-    toolbar->addAction(m_terrainAction);
-    toolbar->addAction(m_regionAction);
-    toolbar->addAction(m_settlementAction);
-    toolbar->addAction(m_roadAction);
-    toolbar->addAction(m_railroadAction);
-    toolbar->addAction(m_riverAction);
-    toolbar->addWidget(m_terrainCombo);
-    toolbar->addSeparator();
     toolbar->addAction(zoomOutAction);
     toolbar->addAction(fitAction);
     toolbar->addAction(zoomInAction);
+
+    auto *toolPalette = new QToolBar(tr("Tools"), this);
+    toolPalette->setObjectName(QStringLiteral("toolPalette"));
+    toolPalette->setOrientation(Qt::Vertical);
+    toolPalette->setMovable(false);
+    toolPalette->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    toolPalette->addAction(m_selectAction);
+    toolPalette->addAction(m_landAction);
+    toolPalette->addAction(m_countryAction);
+    toolPalette->addAction(m_terrainAction);
+    toolPalette->addAction(m_regionAction);
+    toolPalette->addAction(m_settlementAction);
+    toolPalette->addAction(m_roadAction);
+    toolPalette->addAction(m_railroadAction);
+    toolPalette->addAction(m_riverAction);
+    toolPalette->addSeparator();
+    toolPalette->addWidget(new QLabel(tr(" Terrain "), toolPalette));
+    toolPalette->addWidget(m_terrainCombo);
+    toolPalette->addWidget(new QLabel(tr(" Settlement "), toolPalette));
+    toolPalette->addWidget(m_settlementCombo);
+    addToolBar(Qt::LeftToolBarArea, toolPalette);
 }
 
 void MainWindow::chooseNewWorld()
@@ -2160,21 +2175,16 @@ QPolygonF MainWindow::clipToLand(const QPolygonF &polygon) const
 
 void MainWindow::addSettlement(const QPointF &point)
 {
-    QStringList options;
-    for (SettlementType type : {SettlementType::City, SettlementType::Town, SettlementType::Village})
-        options.append(settlementName(type));
-
-    bool ok = false;
-    const QString typeName = QInputDialog::getItem(this, tr("New Settlement"), tr("Type:"), options, 0,
-                                                   false, &ok);
-    if (!ok)
-        return;
-
     SettlementType type = SettlementType::City;
-    for (SettlementType candidate : {SettlementType::City, SettlementType::Town, SettlementType::Village}) {
-        if (settlementName(candidate) == typeName)
-            type = candidate;
+    if (m_settlementCombo) {
+        const int value = m_settlementCombo->currentData().toInt();
+        if (value >= static_cast<int>(SettlementType::City)
+            && value <= static_cast<int>(SettlementType::Village)) {
+            type = static_cast<SettlementType>(value);
+        }
     }
+
+    const QString typeName = settlementName(type);
 
     int sameType = 0;
     for (QGraphicsItem *item : m_scene->items()) {
@@ -2183,19 +2193,14 @@ void MainWindow::addSettlement(const QPointF &point)
             ++sameType;
     }
 
-    const QString name = QInputDialog::getText(this, tr("New Settlement"), tr("Name:"), QLineEdit::Normal,
-                                               QStringLiteral("%1 %2").arg(typeName).arg(sameType + 1), &ok)
-                             .trimmed();
-    if (!ok || name.isEmpty())
-        return;
-
     auto *settlement = new MapFeature(FeatureKind::Settlement);
     settlement->setPoint(point);
     settlement->settlement = type;
-    settlement->name = name;
+    settlement->name = QStringLiteral("%1 %2").arg(typeName).arg(sameType + 1);
     m_scene->addItem(settlement);
     pushHistory();
-    statusBar()->showMessage(tr("%1 %2 placed.").arg(typeName, name), 2000);
+    statusBar()->showMessage(tr("%1 placed. Rename it in the Info dock.").arg(settlement->name),
+                             2500);
 }
 
 int MainWindow::featureCount(FeatureKind kind) const

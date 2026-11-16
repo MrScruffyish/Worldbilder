@@ -23,26 +23,27 @@ Two modes, switched in the toolbar or with `F1` / `F2`:
   into it; regions and settlements appear once you are zoomed in. Click a
   settlement for its details. Wheel and the toolbar zoom out again; `F` fits
   the whole world.
-- **Edit** - pick a tool and click map points; double-click, right-click or
-  `Enter` closes the polygon, `Esc` cancels. Middle-drag pans while editing.
-  Near a corner or border the cursor shows **click to snap** and uses that
-  point. Regions are clipped to their country. `Ctrl+Z` / `Ctrl+Shift+Z` undo
-  and redo map changes. With **Select / Move** active, click an item to select
-  it, drag the item to move it, or drag one of its control points to reshape
-  it (a point snaps to nearby borders and slides along them). Right-click a
-  control point and choose **Replace Control Point**, then click the new
-  position to move that point there; `Esc` cancels. `Esc` also cancels a drag.
+- **Edit** - pick a tool from the left palette and click map points;
+  double-click, right-click or `Enter` closes the polygon, `Esc` cancels.
+  Middle-drag pans while editing. Near a corner or border the cursor shows
+  **click to snap** and uses that point. Regions are clipped to their country.
+  `Ctrl+Z` / `Ctrl+Shift+Z` undo and redo map changes. With **Select / Move**
+  active, click an item to select it, drag the item to move it, or drag one of
+  its control points to reshape it (a point snaps to nearby borders and slides
+  along them). Right-click a control point and choose **Replace Control
+  Point**, then click the new position to move that point there; `Esc` cancels.
+  `Esc` also cancels a drag.
 
-Tools and shortcuts:
+Tools are in the left palette; each has a shortcut.
 
 | Tool | Key | Notes |
 | --- | --- | --- |
 | Select / Move | `M` | Click an item, drag it or one of its control points. |
 | Draw Land | `L` | Adds a land polygon on the sea. |
 | Country | `C` | Asks for a name, assigns a colour. |
-| Terrain Area | `T` | Uses the terrain selected in the toolbar combo. |
+| Terrain Area | `T` | Uses the terrain chosen in the left palette. |
 | Region | `R` | Must be drawn inside a country. |
-| Settlement | `S` | Click a point, then choose city, town or village and a name. |
+| Settlement | `S` | Places the type chosen in the left palette; rename it in the Info dock. |
 | Road | `D` | Click points; terrain under the road weights its travel cost. |
 | Railroad | `I` | Click points; drawn as a dark line with light ties. |
 | River | `V` | Click points; roads and railroads crossing a river get bridges. |

@@ -107,6 +107,7 @@ private:
     QAction *m_undoAction = nullptr;
     QAction *m_redoAction = nullptr;
     QComboBox *m_terrainCombo = nullptr;
+    QComboBox *m_settlementCombo = nullptr;
     QLabel *m_zoomLabel = nullptr;
     QDockWidget *m_infoDock = nullptr;
     QLabel *m_infoTitle = nullptr;
