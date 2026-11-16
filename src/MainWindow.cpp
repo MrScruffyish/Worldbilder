@@ -144,11 +144,16 @@ bool terrainCanBorder(TerrainType a, TerrainType b)
     case TerrainType::Forest:
         return b != TerrainType::Desert;
     case TerrainType::Desert:
-        return b != TerrainType::Forest && b != TerrainType::Swamp;
+        return b != TerrainType::Forest && b != TerrainType::Swamp
+               && b != TerrainType::Farmland;
     case TerrainType::Mountains:
-        return b != TerrainType::Swamp;
+        return b != TerrainType::Swamp && b != TerrainType::Farmland;
     case TerrainType::Swamp:
-        return b != TerrainType::Desert && b != TerrainType::Mountains;
+        return b != TerrainType::Desert && b != TerrainType::Mountains
+               && b != TerrainType::Farmland;
+    case TerrainType::Farmland:
+        return b == TerrainType::Grass || b == TerrainType::Forest
+               || b == TerrainType::Water;
     }
     return true;
 }

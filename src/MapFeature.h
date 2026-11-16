@@ -27,6 +27,7 @@ enum class TerrainType {
     Mountains,
     Water,
     Swamp,
+    Farmland,
     Uncharted,
 };
 
