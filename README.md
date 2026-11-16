@@ -78,7 +78,11 @@ only meets compatible types, so desert and forest always keep grassland,
 mountains or water between them. Glacier terrain forms next to mountains,
 water or uncharted land. Set **Uncharted terrain** to a percentage to leave
 that share of the generated area unknown; filled areas keep the uncharted part
-in one large central block.
+in one large central block. **Add random settlements** fills the selected
+region, or every region of a country, with roughly one city, a few towns and
+more villages. Cities keep their distance from each other, some settlements
+sit on the coast or just inside a border, and harsh terrain gets far fewer
+settlements or none at all.
 
 ## World files
 
@@ -91,8 +95,8 @@ report what went wrong.
 
 ## Source layout
 
-- `src/MapFeature.*` - map object (land, country, terrain, region, road, river,
-  settlement), painting and JSON serialization.
+- `src/MapFeature.*` - map object (land, country, terrain, region, road, railroad,
+  river, settlement), painting and JSON serialization.
 - `src/MapView.*` - QGraphicsView canvas: pan, zoom, draft polygons, clicks.
 - `src/MainWindow.*` - tools, dialogs, info dock, save/load.
 

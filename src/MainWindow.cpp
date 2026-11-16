@@ -45,6 +45,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <optional>
 
 namespace {
 const QColor kSeaColor(0x3d, 0x6a, 0x93);
@@ -1346,7 +1347,14 @@ void MainWindow::showRandomDialog()
             });
     layout->addWidget(terrainButton);
 
-    addButton(tr("Add random settlements"), &MainWindow::addRandomSettlements);
+    auto *settlementButton = new QPushButton(tr("Add random settlements"), &dialog);
+    settlementButton->setToolTip(tr("Fills the selected region or country with cities, towns and "
+                                    "villages. A country fills each of its regions first."));
+    connect(settlementButton, &QPushButton::clicked, this,
+            [this, countSpin, fillCheck] {
+                addRandomSettlements(countSpin->value(), fillCheck->isChecked());
+            });
+    layout->addWidget(settlementButton);
 
     auto *closeButton = new QPushButton(tr("Close"), &dialog);
     connect(closeButton, &QPushButton::clicked, &dialog, &QDialog::accept);
@@ -1771,25 +1779,230 @@ void MainWindow::addRandomTerrainAreas(int count, bool fill, int unchartedPercen
 void MainWindow::addRandomSettlements(int count, bool fill)
 {
     Q_UNUSED(fill);
-    for (int i = 0; i < count; ++i) {
-        const auto type = static_cast<SettlementType>(QRandomGenerator::global()->bounded(3));
-        const QString typeName = settlementName(type);
 
-        int sameType = 0;
+    int typeCounts[3] = {0, 0, 0};
+    QVector<QPointF> settlementPoints;
+    QVector<QPointF> cityPoints;
+    for (QGraphicsItem *item : m_scene->items()) {
+        auto *feature = dynamic_cast<MapFeature *>(item);
+        if (!feature || feature->kind() != FeatureKind::Settlement)
+            continue;
+        const int index = static_cast<int>(feature->settlement);
+        if (index >= 0 && index < 3)
+            ++typeCounts[index];
+        settlementPoints.append(feature->point());
+        if (feature->settlement == SettlementType::City)
+            cityPoints.append(feature->point());
+    }
+
+    QVector<MapFeature *> countries;
+    for (QGraphicsItem *item : m_scene->items()) {
+        auto *feature = dynamic_cast<MapFeature *>(item);
+        if (feature && feature->kind() == FeatureKind::Country)
+            countries.append(feature);
+    }
+
+    auto regionsOf = [this](const MapFeature *country) {
+        QVector<MapFeature *> regions;
         for (QGraphicsItem *item : m_scene->items()) {
             auto *feature = dynamic_cast<MapFeature *>(item);
-            if (feature && feature->kind() == FeatureKind::Settlement && feature->settlement == type)
-                ++sameType;
+            if (feature && feature->kind() == FeatureKind::Region
+                && feature->countryName == country->name) {
+                regions.append(feature);
+            }
         }
+        return regions;
+    };
 
-        auto *settlement = new MapFeature(FeatureKind::Settlement);
-        settlement->setPoint(randomWorldPoint());
-        settlement->settlement = type;
-        settlement->name = QStringLiteral("%1 %2").arg(typeName).arg(sameType + 1);
-        m_scene->addItem(settlement);
+    QVector<MapFeature *> areas;
+    if (m_selected && m_selected->kind() == FeatureKind::Region) {
+        areas.append(m_selected);
+    } else if (m_selected && m_selected->kind() == FeatureKind::Country) {
+        areas = regionsOf(m_selected);
+        if (areas.isEmpty())
+            areas.append(m_selected);
+    } else {
+        for (MapFeature *country : countries) {
+            const QVector<MapFeature *> regions = regionsOf(country);
+            if (regions.isEmpty())
+                areas.append(country);
+            else
+                areas += regions;
+        }
     }
-    pushHistory();
-    statusBar()->showMessage(tr("Added %1 random settlements.").arg(count), 2500);
+
+    if (areas.isEmpty()) {
+        statusBar()->showMessage(tr("Draw a country or region first."), 2500);
+        return;
+    }
+
+    auto contains = [](const QPolygonF &area, const QPointF &point) {
+        return area.containsPoint(point, Qt::OddEvenFill);
+    };
+    auto landOnly = [this](const QPointF &point) {
+        return terrainAt(point) != TerrainType::Water;
+    };
+
+    auto interiorPoint = [&](const QPolygonF &area) -> std::optional<QPointF> {
+        const QRectF bounds = area.boundingRect();
+        for (int attempt = 0; attempt < 200; ++attempt) {
+            const QPointF point(
+                bounds.left() + QRandomGenerator::global()->generateDouble() * bounds.width(),
+                bounds.top() + QRandomGenerator::global()->generateDouble() * bounds.height());
+            if (contains(area, point) && landOnly(point))
+                return point;
+        }
+        return std::nullopt;
+    };
+
+    auto boundaryPoint = [&](const QPolygonF &area, bool coastOnly) -> std::optional<QPointF> {
+        if (area.size() < 3)
+            return std::nullopt;
+
+        constexpr double kInset = 7.0;
+        for (int attempt = 0; attempt < 80; ++attempt) {
+            const int edge = QRandomGenerator::global()->bounded(int(area.size()));
+            const QPointF a = area.at(edge);
+            const QPointF b = area.at((edge + 1) % area.size());
+            const QPointF edgeVector = b - a;
+            const double length = std::hypot(edgeVector.x(), edgeVector.y());
+            if (length < 24.0)
+                continue;
+
+            const QPointF normal(-edgeVector.y() / length, edgeVector.x() / length);
+            const QPointF middle =
+                a + edgeVector
+                        * (0.15 + 0.7 * QRandomGenerator::global()->generateDouble());
+
+            for (double side : {1.0, -1.0}) {
+                const QPointF inside = middle + normal * (kInset * side);
+                if (!contains(area, inside) || !landOnly(inside))
+                    continue;
+                if (coastOnly) {
+                    const QPointF outside = middle - normal * (kInset * side);
+                    if (terrainAt(outside) != TerrainType::Water)
+                        continue;
+                }
+                return inside;
+            }
+        }
+        return std::nullopt;
+    };
+
+    auto habitableShare = [&](const QPolygonF &area) {
+        const QRectF bounds = area.boundingRect();
+        int land = 0;
+        int habitable = 0;
+        for (int sample = 0; sample < 160; ++sample) {
+            const QPointF point(
+                bounds.left() + QRandomGenerator::global()->generateDouble() * bounds.width(),
+                bounds.top() + QRandomGenerator::global()->generateDouble() * bounds.height());
+            if (!contains(area, point))
+                continue;
+            const TerrainType terrain = terrainAt(point);
+            if (terrain == TerrainType::Water)
+                continue;
+            ++land;
+            if (terrain == TerrainType::Grass || terrain == TerrainType::Forest
+                || terrain == TerrainType::Farmland) {
+                ++habitable;
+            }
+        }
+        return land == 0 ? 1.0 : double(habitable) / land;
+    };
+
+    auto tooClose = [&](SettlementType type, const QPointF &point) {
+        const double minAll = type == SettlementType::City   ? 40.0
+                              : type == SettlementType::Town ? 28.0
+                                                             : 14.0;
+        for (const QPointF &other : settlementPoints) {
+            if (QLineF(point, other).length() < minAll)
+                return true;
+        }
+        if (type == SettlementType::City) {
+            for (const QPointF &city : cityPoints) {
+                if (QLineF(point, city).length() < 160.0)
+                    return true;
+            }
+        }
+        return false;
+    };
+
+    int added[3] = {0, 0, 0};
+    for (MapFeature *area : areas) {
+        const QPolygonF polygon = area->polygon();
+        if (polygon.size() < 3)
+            continue;
+
+        const double sizeFactor = qBound(0.5, polygonArea(polygon) / 150000.0, 2.0);
+        const double jitter = 0.8 + QRandomGenerator::global()->generateDouble() * 0.4;
+        int wanted[3] = {
+            qMax(1, qRound(count / 8.0 * sizeFactor * jitter)),
+            qMax(1, qRound(count * 0.6 * sizeFactor * jitter)),
+            qMax(1, qRound(count * 2.0 * sizeFactor * jitter)),
+        };
+
+        const double habitable = habitableShare(polygon);
+        wanted[0] = qRound(wanted[0] * habitable * habitable);
+        wanted[1] = qRound(wanted[1] * std::pow(habitable, 1.5));
+        wanted[2] = qRound(wanted[2] * habitable);
+
+        for (int typeIndex = 0; typeIndex < 3; ++typeIndex) {
+            const SettlementType type = static_cast<SettlementType>(typeIndex);
+            const double coastChance = type == SettlementType::City   ? 0.3
+                                       : type == SettlementType::Town ? 0.2
+                                                                      : 0.15;
+            const double borderChance = type == SettlementType::Village ? 0.15
+                                        : type == SettlementType::Town  ? 0.08
+                                                                        : 0.0;
+
+            for (int i = 0; i < wanted[typeIndex]; ++i) {
+                std::optional<QPointF> point;
+                for (int attempt = 0; attempt < 60; ++attempt) {
+                    const double roll = QRandomGenerator::global()->generateDouble();
+                    std::optional<QPointF> candidate;
+                    if (roll < coastChance)
+                        candidate = boundaryPoint(polygon, true);
+                    else if (roll < coastChance + borderChance)
+                        candidate = boundaryPoint(polygon, false);
+                    if (!candidate)
+                        candidate = interiorPoint(polygon);
+
+                    if (candidate && !tooClose(type, *candidate)) {
+                        point = candidate;
+                        break;
+                    }
+                }
+                if (!point)
+                    continue;
+
+                auto *settlement = new MapFeature(FeatureKind::Settlement);
+                settlement->setPoint(*point);
+                settlement->settlement = type;
+                settlement->name = QStringLiteral("%1 %2")
+                                       .arg(settlementName(type))
+                                       .arg(++typeCounts[typeIndex]);
+                m_scene->addItem(settlement);
+
+                settlementPoints.append(*point);
+                if (type == SettlementType::City)
+                    cityPoints.append(*point);
+                ++added[typeIndex];
+            }
+        }
+    }
+
+    const int total = added[0] + added[1] + added[2];
+    if (total > 0)
+        pushHistory();
+    statusBar()->showMessage(
+        total > 0 ? tr("Auto-filled %1 settlements: %2 cities, %3 towns, %4 villages.")
+                        .arg(total)
+                        .arg(added[0])
+                        .arg(added[1])
+                        .arg(added[2])
+                  : tr("No room for settlements there."),
+        3000);
 }
 
 void MainWindow::createActions()
