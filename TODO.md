@@ -1,7 +1,6 @@
 Overall rule: Do everything very simple at first, no backwards compatability, commit with terse messages when one task is done. Avoid tests for now.
 
 # TODO
-39. Glacier is also a terrain.
 40. Some auto-fill with cities, towns, villages  (like for 1 city, 2-3 towns and 6-10 villages?) Cities are not supposed to end up too close to each other, otherwise fine to place stuff anywhere. Some stuff should be snapped to coast line. some few villages could be snapped to a region/country limit but clearly on one side of it.   Fill should be done per region or for a country (fill each region then). In harsh land, there should be much fewer settlements, if any.
 
 
@@ -9,6 +8,7 @@ Overall rule: Do everything very simple at first, no backwards compatability, co
 Add a tool for smoothing the map (i.e. a little bit more smoth lines but still with som wiggle so it does not look like a triangle or square, but more a "natural" shape with some bends or shapes along the line.
 
 # DONE
+39. Glacier is also a terrain.
 38. Farming landscape is also a terrain type.
 37. Some terrain should be unchartered, the user should be able to change amount of unchartered. The unchartered areas should be like in a dessert, or large forrest, or mountains. but probably only in large areas. Or if there is supposed to be a lot unchartered, then perhaps fill the middle of the land with unchartered, like, dont even know if it is mountian or dessert or what.
 36. Add possibility to fill land with random terrain. but it cant be too random. a dessert can not have a forrest as neighbour, there need to be some intermediate thing.

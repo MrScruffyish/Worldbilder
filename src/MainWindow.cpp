@@ -145,15 +145,18 @@ bool terrainCanBorder(TerrainType a, TerrainType b)
         return b != TerrainType::Desert;
     case TerrainType::Desert:
         return b != TerrainType::Forest && b != TerrainType::Swamp
-               && b != TerrainType::Farmland;
+               && b != TerrainType::Farmland && b != TerrainType::Glacier;
     case TerrainType::Mountains:
         return b != TerrainType::Swamp && b != TerrainType::Farmland;
     case TerrainType::Swamp:
         return b != TerrainType::Desert && b != TerrainType::Mountains
-               && b != TerrainType::Farmland;
+               && b != TerrainType::Farmland && b != TerrainType::Glacier;
     case TerrainType::Farmland:
         return b == TerrainType::Grass || b == TerrainType::Forest
                || b == TerrainType::Water;
+    case TerrainType::Glacier:
+        return b == TerrainType::Mountains || b == TerrainType::Water
+               || b == TerrainType::Uncharted;
     }
     return true;
 }
@@ -173,7 +176,7 @@ TerrainType compatibleTerrain(const QPolygonF &polygon, const QVector<MapFeature
             continue;
         bool compatible = true;
         for (TerrainType neighbour : neighbours) {
-            if (!terrainCanBorder(type, neighbour)) {
+            if (!terrainCanBorder(type, neighbour) || !terrainCanBorder(neighbour, type)) {
                 compatible = false;
                 break;
             }

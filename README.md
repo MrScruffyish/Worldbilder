@@ -75,9 +75,10 @@ settlements for quick maps. Tick **Fill the target area completely** to tile
 the selected (or first) land or country with the chosen number of countries,
 regions or terrain areas instead of placing separate blobs. Random terrain
 only meets compatible types, so desert and forest always keep grassland,
-mountains or water between them. Set **Uncharted terrain** to a percentage to
-leave that share of the generated area unknown; filled areas keep the
-uncharted part in one large central block.
+mountains or water between them. Glacier terrain forms next to mountains,
+water or uncharted land. Set **Uncharted terrain** to a percentage to leave
+that share of the generated area unknown; filled areas keep the uncharted part
+in one large central block.
 
 ## World files
 

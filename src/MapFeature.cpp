@@ -29,6 +29,7 @@ const TerrainInfo kTerrains[] = {
     {TerrainType::Water, "Water", QColor(0x4f, 0x83, 0xb8)},
     {TerrainType::Swamp, "Swamp", QColor(0x6c, 0x7f, 0x5a)},
     {TerrainType::Farmland, "Farmland", QColor(0xbc, 0xb4, 0x5f)},
+    {TerrainType::Glacier, "Glacier", QColor(0xd8, 0xe5, 0xe8)},
     {TerrainType::Uncharted, "Uncharted", QColor(0x9d, 0x97, 0x8b)},
 };
 
@@ -129,6 +130,8 @@ double terrainTravelCost(TerrainType terrain)
         return 2.5;
     case TerrainType::Farmland:
         return 1.1;
+    case TerrainType::Glacier:
+        return 2.0;
     case TerrainType::Uncharted:
         return 1.6;
     }
@@ -140,7 +143,7 @@ const QVector<TerrainType> &terrainTypes()
     static const QVector<TerrainType> types = {
         TerrainType::Grass, TerrainType::Forest, TerrainType::Desert,
         TerrainType::Mountains, TerrainType::Water, TerrainType::Swamp,
-        TerrainType::Farmland, TerrainType::Uncharted,
+        TerrainType::Farmland, TerrainType::Glacier, TerrainType::Uncharted,
     };
     return types;
 }
