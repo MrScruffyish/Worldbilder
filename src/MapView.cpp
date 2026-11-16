@@ -389,6 +389,13 @@ void MapView::contextMenuEvent(QContextMenuEvent *event)
 
 void MapView::keyPressEvent(QKeyEvent *event)
 {
+    if (m_mode == Mode::Edit && m_tool == Tool::None && m_editSelection
+        && event->key() == Qt::Key_Delete) {
+        emit deleteRequested();
+        event->accept();
+        return;
+    }
+
     if (m_replacingPoint && event->key() == Qt::Key_Escape) {
         cancelPointReplacement();
         event->accept();

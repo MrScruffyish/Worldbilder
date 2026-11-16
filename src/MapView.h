@@ -56,6 +56,7 @@ signals:
     void featureClicked(MapFeature *feature);
     void featureSelected(MapFeature *feature);
     void featureEdited();
+    void deleteRequested();
     void polygonFinished(MapView::Tool tool, const QPolygonF &polygon);
     void pointChosen(MapView::Tool tool, const QPointF &point);
 

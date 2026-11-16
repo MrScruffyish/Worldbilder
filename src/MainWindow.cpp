@@ -28,6 +28,7 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QPainterPath>
+#include <QPainterPathStroker>
 #include <QPixmap>
 #include <QPlainTextEdit>
 #include <QPushButton>
@@ -39,6 +40,7 @@
 #include <QVBoxLayout>
 #include <QWidget>
 
+#include <algorithm>
 #include <cmath>
 
 namespace {
@@ -72,6 +74,35 @@ QPointF polygonCenter(const QPolygonF &polygon)
         return polygon.boundingRect().center();
     area *= 0.5;
     return QPointF(cx / (6.0 * area), cy / (6.0 * area));
+}
+
+/// Move vertices that are within tolerance of another polygon's edge exactly
+/// onto that edge. Shared borders are computed independently and can differ by
+/// tiny fractions, which makes QPainterPath's boolean operations fail.
+void snapToEdges(QPolygonF &polygon, const QPolygonF &target, double tolerance)
+{
+    for (QPointF &point : polygon) {
+        double bestDistance = tolerance;
+        QPointF bestPoint = point;
+        for (int i = 0; i < target.size(); ++i) {
+            const QPointF a = target.at(i);
+            const QPointF b = target.at((i + 1) % target.size());
+            const QPointF edge = b - a;
+            const double lengthSquared = edge.x() * edge.x() + edge.y() * edge.y();
+            if (lengthSquared <= 0.0)
+                continue;
+            const QPointF offset = point - a;
+            double t = (offset.x() * edge.x() + offset.y() * edge.y()) / lengthSquared;
+            t = qBound(0.0, t, 1.0);
+            const QPointF candidate = a + edge * t;
+            const double distance = QLineF(point, candidate).length();
+            if (distance < bestDistance) {
+                bestDistance = distance;
+                bestPoint = candidate;
+            }
+        }
+        point = bestPoint;
+    }
 }
 
 QPainterPath halfPlanePath(const QRectF &bounds, const QPointF &through, const QPointF &direction,
@@ -258,6 +289,7 @@ MainWindow::MainWindow(QWidget *parent)
         pushHistory();
         statusBar()->showMessage(tr("Item moved."), 1500);
     });
+    connect(m_view, &MapView::deleteRequested, this, &MainWindow::deleteSelectedFeature);
 
     connect(m_view, &MapView::polygonFinished, this, [this](MapView::Tool tool, const QPolygonF &polygon) {
         switch (tool) {
@@ -331,6 +363,11 @@ void MainWindow::createInfoDock()
     layout->addWidget(m_editButton = new QPushButton(tr("Edit..."), widget));
     m_editButton->setEnabled(false);
     connect(m_editButton, &QPushButton::clicked, this, &MainWindow::editSelectedFeature);
+
+    m_deleteButton = new QPushButton(tr("Delete..."), widget);
+    m_deleteButton->setEnabled(false);
+    connect(m_deleteButton, &QPushButton::clicked, this, &MainWindow::deleteSelectedFeature);
+    layout->addWidget(m_deleteButton);
 
     m_regionsButton = new QPushButton(tr("Fill with..."), widget);
     m_regionsButton->setVisible(false);
@@ -427,6 +464,8 @@ void MainWindow::selectFeature(MapFeature *feature)
         m_infoDescription->clear();
         if (m_editButton)
             m_editButton->setEnabled(false);
+        if (m_deleteButton)
+            m_deleteButton->setEnabled(false);
         if (m_regionsButton)
             m_regionsButton->setVisible(false);
         return;
@@ -434,6 +473,8 @@ void MainWindow::selectFeature(MapFeature *feature)
 
     if (m_editButton)
         m_editButton->setEnabled(true);
+    if (m_deleteButton)
+        m_deleteButton->setEnabled(true);
     if (m_regionsButton) {
         const bool isCountry = feature->kind() == FeatureKind::Country;
         const bool isLand = feature->kind() == FeatureKind::Land;
@@ -592,6 +633,132 @@ void MainWindow::editSelectedFeature()
     selectFeature(feature);
     pushHistory();
     statusBar()->showMessage(tr("Updated %1.").arg(feature->kindName().toLower()), 2000);
+}
+
+void MainWindow::deleteSelectedFeature()
+{
+    if (!m_selected) {
+        statusBar()->showMessage(tr("Select an item first."), 2000);
+        return;
+    }
+
+    MapFeature *feature = m_selected;
+    const FeatureKind kind = feature->kind();
+    const QPolygonF vacated = feature->polygon();
+    const QString countryName = feature->countryName;
+    QString title = feature->name;
+    if (title.isEmpty())
+        title = kind == FeatureKind::TerrainArea ? terrainName(feature->terrain)
+                                                 : feature->kindName();
+
+    const bool area = kind == FeatureKind::Land || kind == FeatureKind::Country
+                      || kind == FeatureKind::Region || kind == FeatureKind::TerrainArea;
+
+    QVector<MapFeature *> siblings;
+    if (area) {
+        for (QGraphicsItem *item : m_scene->items()) {
+            auto *other = dynamic_cast<MapFeature *>(item);
+            if (!other || other == feature)
+                continue;
+            if (kind == FeatureKind::Region && other->kind() == FeatureKind::Region
+                && other->countryName == countryName) {
+                siblings.append(other);
+            } else if (kind == FeatureKind::Country && other->kind() == FeatureKind::Country) {
+                siblings.append(other);
+            } else if (kind == FeatureKind::Land && other->kind() == FeatureKind::Land) {
+                siblings.append(other);
+            } else if (kind == FeatureKind::TerrainArea
+                       && other->kind() == FeatureKind::TerrainArea) {
+                siblings.append(other);
+            }
+        }
+    }
+
+    selectFeature(nullptr);
+    delete feature;
+
+    if (kind == FeatureKind::Country) {
+        for (QGraphicsItem *item : m_scene->items()) {
+            auto *region = dynamic_cast<MapFeature *>(item);
+            if (region && region->kind() == FeatureKind::Region
+                && region->countryName == countryName) {
+                delete region;
+            }
+        }
+    }
+
+    bool expand = false;
+    if (area && !siblings.isEmpty()) {
+        const auto answer = QMessageBox::question(
+            this, tr("Delete Item"),
+            tr("Deleted %1.\n\nExpand bordering items to fill the vacated space?").arg(title),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
+        expand = answer == QMessageBox::Yes;
+    }
+
+    if (expand)
+        expandIntoVacated(vacated, siblings);
+
+    pushHistory();
+    statusBar()->showMessage(tr("Deleted %1.").arg(title), 2500);
+}
+
+void MainWindow::expandIntoVacated(const QPolygonF &vacated,
+                                   const QVector<MapFeature *> &siblings)
+{
+    if (vacated.size() < 3 || siblings.isEmpty())
+        return;
+
+    QPainterPath vacatedPath;
+    vacatedPath.addPolygon(vacated);
+    vacatedPath.closeSubpath();
+
+    // Only a neighbour that shares a real stretch of border can absorb the
+    // area. Touching at a single point would produce a broken outline.
+    QPainterPathStroker stroker;
+    stroker.setWidth(2.0);
+
+    QVector<QPair<double, MapFeature *>> candidates;
+    for (MapFeature *sibling : siblings) {
+        QPainterPath siblingPath;
+        siblingPath.addPolygon(sibling->polygon());
+        siblingPath.closeSubpath();
+
+        const QPainterPath sharedBorder = vacatedPath.intersected(stroker.createStroke(siblingPath));
+        const double border = polygonArea(sharedBorder.toFillPolygon()) * 0.5;
+        if (border >= 5.0)
+            candidates.append({border, sibling});
+    }
+    std::sort(candidates.begin(), candidates.end(),
+              [](const auto &a, const auto &b) { return a.first > b.first; });
+
+    for (const auto &candidate : candidates) {
+        MapFeature *sibling = candidate.second;
+        QPolygonF siblingPolygon = sibling->polygon();
+        QPolygonF vacatedPolygon = vacated;
+        // Neighbouring polygons come from separate clipping operations, so
+        // their shared border can be off by a small fraction. Snap them
+        // together or QPainterPath's union silently drops one side.
+        snapToEdges(vacatedPolygon, siblingPolygon, 1.0);
+        snapToEdges(siblingPolygon, vacated, 1.0);
+
+        QPainterPath siblingPath;
+        siblingPath.addPolygon(siblingPolygon);
+        siblingPath.closeSubpath();
+        QPainterPath vacatedSnappedPath;
+        vacatedSnappedPath.addPolygon(vacatedPolygon);
+        vacatedSnappedPath.closeSubpath();
+
+        const QPolygonF result =
+            siblingPath.united(vacatedSnappedPath).simplified().toFillPolygon();
+        const double expected = polygonArea(siblingPolygon) + polygonArea(vacatedPolygon);
+        if (result.size() < 3 || polygonArea(result) < expected * 0.95)
+            continue;
+
+        sibling->setPolygon(result);
+        sibling->refresh();
+        return;
+    }
 }
 
 void MainWindow::saveWorld()
@@ -1385,6 +1552,9 @@ void MainWindow::createActions()
     m_redoAction->setEnabled(false);
     connect(m_redoAction, &QAction::triggered, this, &MainWindow::redo);
 
+    auto *deleteAction = new QAction(tr("Delete Selected Item..."), this);
+    connect(deleteAction, &QAction::triggered, this, &MainWindow::deleteSelectedFeature);
+
     auto *zoomInAction = new QAction(tr("Zoom In"), this);
     zoomInAction->setShortcut(QKeySequence::ZoomIn);
     connect(zoomInAction, &QAction::triggered, this, [this] { m_view->zoomBy(1.25); });
@@ -1446,6 +1616,8 @@ void MainWindow::createActions()
     auto *editMenu = menuBar()->addMenu(tr("&Edit"));
     editMenu->addAction(m_undoAction);
     editMenu->addAction(m_redoAction);
+    editMenu->addSeparator();
+    editMenu->addAction(deleteAction);
 
     auto *generateMenu = menuBar()->addMenu(tr("&Generate"));
     generateMenu->addAction(randomAction);

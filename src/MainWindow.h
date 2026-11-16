@@ -7,6 +7,7 @@
 #include <QList>
 #include <QMainWindow>
 #include <QSizeF>
+#include <QVector>
 
 class QAction;
 class QComboBox;
@@ -54,6 +55,8 @@ private:
     void onFeatureClicked(MapFeature *feature);
     void updateVisibility(double scale);
     void editSelectedFeature();
+    void deleteSelectedFeature();
+    void expandIntoVacated(const QPolygonF &vacated, const QVector<MapFeature *> &siblings);
     void saveWorld();
     void saveWorldAs();
     bool writeWorld(const QString &path);
@@ -105,6 +108,7 @@ private:
     QLabel *m_infoDetails = nullptr;
     QLabel *m_infoDescription = nullptr;
     QPushButton *m_editButton = nullptr;
+    QPushButton *m_deleteButton = nullptr;
     QPushButton *m_regionsButton = nullptr;
     QDockWidget *m_logDock = nullptr;
     QPlainTextEdit *m_logView = nullptr;
