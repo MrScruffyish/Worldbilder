@@ -44,8 +44,9 @@ Two modes, switched in the toolbar or with `F1` / `F2`:
   spot, so shared borders stay joined. Right-click a control point and choose
   **Replace Control Point**, then click the new position to move that point
   there; `Esc` cancels. Right-click a border between two control points and
-  choose **Add Control Point** to insert a point there; shared borders get the
-  new point too. `Esc` also cancels a drag.
+  choose **Add Control Point** to insert a point there; the border is highlighted
+  to show the new point snaps onto the line, and shared borders get the new
+  point too. `Esc` also cancels a drag.
 
 Tools are in the left palette; each has a shortcut.
 

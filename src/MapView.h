@@ -120,4 +120,8 @@ private:
     bool m_geometryChanged = false;
     bool m_replacingPoint = false;
     int m_replaceIndex = -1;
+    bool m_insertPreviewValid = false;
+    QPointF m_insertPreviewPoint;
+    QPointF m_insertPreviewStart;
+    QPointF m_insertPreviewEnd;
 };

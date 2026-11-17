@@ -469,10 +469,20 @@ void MapView::contextMenuEvent(QContextMenuEvent *event)
         return;
     }
 
+    const QPolygonF previewPolygon = segmentFeature->polygon();
+    m_insertPreviewValid = true;
+    m_insertPreviewPoint = insertPoint;
+    m_insertPreviewStart = previewPolygon.at(segmentIndex);
+    m_insertPreviewEnd = previewPolygon.at((segmentIndex + 1) % previewPolygon.size());
+    viewport()->repaint();
+
     QMenu menu(this);
     QAction *addAction = menu.addAction(tr("Add Control Point"));
     if (menu.exec(event->globalPos()) == addAction)
         insertControlPoint(segmentFeature, segmentIndex, insertPoint);
+
+    m_insertPreviewValid = false;
+    viewport()->update();
     event->accept();
 }
 
@@ -530,7 +540,7 @@ void MapView::drawForeground(QPainter *painter, const QRectF &rect)
     if (scale <= 0.0)
         return;
 
-    if (!m_drafting && !m_snapValid
+    if (!m_drafting && !m_snapValid && !m_insertPreviewValid
         && !(m_mode == Mode::Edit && m_tool == Tool::None && m_editSelection)) {
         return;
     }
@@ -596,7 +606,37 @@ void MapView::drawForeground(QPainter *painter, const QRectF &rect)
             painter->drawEllipse(point, radius, radius);
     }
 
-    if (m_snapValid) {
+    if (m_insertPreviewValid) {
+        QPen highlight(QColor(0xff, 0x8f, 0x1c), 2.0 / scale);
+        highlight.setStyle(Qt::DashLine);
+        painter->setPen(highlight);
+        painter->setBrush(Qt::NoBrush);
+        painter->drawLine(m_insertPreviewStart, m_insertPreviewEnd);
+
+        const double ring = 7.0 / scale;
+        painter->setPen(QPen(QColor(0xff, 0x8f, 0x1c), 2.0 / scale));
+        painter->setBrush(QColor(0xff, 0x8f, 0x1c, 60));
+        painter->drawEllipse(m_insertPreviewPoint, ring, ring);
+
+        QFont font = painter->font();
+        font.setPixelSize(qMax(1, qRound(11.0 / scale)));
+        painter->setFont(font);
+
+        const QString text = tr("new control point snaps to line");
+        const QFontMetricsF metrics(font);
+        const QRectF textRect(0, 0, metrics.horizontalAdvance(text) + 10.0 / scale,
+                              metrics.height() + 4.0 / scale);
+        const QPointF origin = m_insertPreviewPoint
+                               + QPointF(10.0 / scale, -10.0 / scale - textRect.height());
+
+        painter->setPen(Qt::NoPen);
+        painter->setBrush(QColor(255, 255, 255, 220));
+        painter->drawRoundedRect(textRect.translated(origin), 3.0 / scale, 3.0 / scale);
+        painter->setPen(QColor(0x32, 0x2d, 0x26));
+        painter->drawText(textRect.translated(origin), Qt::AlignCenter, text);
+    }
+
+    if (m_snapValid && !m_insertPreviewValid) {
         const double ring = 7.0 / scale;
         painter->setPen(QPen(QColor(0xff, 0x8f, 0x1c), 2.0 / scale));
         painter->setBrush(QColor(0xff, 0x8f, 0x1c, 60));
