@@ -37,7 +37,7 @@ private:
     void chooseNewWorld();
     void newWorld(bool land);
     MapFeature *addBigLand();
-    void addLand(const QPolygonF &polygon);
+    MapFeature *addLand(const QPolygonF &polygon);
     void addCountry(const QPolygonF &polygon);
     void addTerrainArea(const QPolygonF &polygon);
     void addRegion(const QPolygonF &polygon);
@@ -79,6 +79,7 @@ private:
     void fillLandWithCountries(MapFeature *land, int count);
     void addRandomTerrainAreas(int count, bool fill, int unchartedPercent);
     void addRandomSettlements(int count, bool fill);
+    void shareControlPoints(MapFeature *feature);
     QPointF randomWorldPoint() const;
     QPolygonF randomBlob(const QPointF &center, double radius) const;
     QPolygonF randomPolygonInCountry(MapFeature *country) const;

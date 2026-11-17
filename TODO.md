@@ -7,6 +7,7 @@ Overall rule: Do everything very simple at first, no backwards compatability, co
 Add a tool for smoothing the map (i.e. a little bit more smoth lines but still with som wiggle so it does not look like a triangle or square, but more a "natural" shape with some bends or shapes along the line.
 
 # DONE
+41. When generating random areas, if a corner or line point ends up as a snapped to a line, that should be a controlpoint. 
 40. Some auto-fill with cities, towns, villages  (like for 1 city, 2-3 towns and 6-10 villages?) Cities are not supposed to end up too close to each other, otherwise fine to place stuff anywhere. Some stuff should be snapped to coast line. some few villages could be snapped to a region/country limit but clearly on one side of it.   Fill should be done per region or for a country (fill each region then). In harsh land, there should be much fewer settlements, if any.
 39. Glacier is also a terrain.
 38. Farming landscape is also a terrain type.

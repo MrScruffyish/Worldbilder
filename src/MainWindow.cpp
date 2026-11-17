@@ -109,6 +109,43 @@ void snapToEdges(QPolygonF &polygon, const QPolygonF &target, double tolerance)
     }
 }
 
+bool isClosedArea(FeatureKind kind)
+{
+    return kind == FeatureKind::Land || kind == FeatureKind::Country
+           || kind == FeatureKind::Region || kind == FeatureKind::TerrainArea;
+}
+
+/// Turn a point that sits on one of the polygon's lines into a control point.
+bool insertOnEdge(QPolygonF &polygon, const QPointF &point, double tolerance)
+{
+    if (polygon.size() < 3)
+        return false;
+
+    for (const QPointF &existing : polygon) {
+        if (QLineF(existing, point).length() <= 0.1)
+            return false;
+    }
+
+    for (int i = 0; i < polygon.size(); ++i) {
+        const QPointF &a = polygon.at(i);
+        const QPointF &b = polygon.at((i + 1) % polygon.size());
+        const QPointF edge = b - a;
+        const double lengthSquared = edge.x() * edge.x() + edge.y() * edge.y();
+        if (lengthSquared <= 0.0)
+            continue;
+        const QPointF offset = point - a;
+        const double t = (offset.x() * edge.x() + offset.y() * edge.y()) / lengthSquared;
+        if (t <= 0.0 || t >= 1.0)
+            continue;
+        const QPointF closest = a + edge * t;
+        if (QLineF(closest, point).length() <= tolerance) {
+            polygon.insert(i + 1, point);
+            return true;
+        }
+    }
+    return false;
+}
+
 /// True when two terrain areas share a stretch of border or overlap.
 bool polygonsTouch(const QPolygonF &a, const QPolygonF &b)
 {
@@ -1422,6 +1459,48 @@ QPolygonF MainWindow::randomPolygonInCountry(MapFeature *country) const
     return {};
 }
 
+/// Generated corners that land on another area's line become control points on
+/// that line, and existing corners on the new lines become its control points.
+void MainWindow::shareControlPoints(MapFeature *feature)
+{
+    if (!feature || !isClosedArea(feature->kind()))
+        return;
+
+    constexpr double kTolerance = 1.0;
+    const QPolygonF generated = feature->polygon();
+    if (generated.size() < 3)
+        return;
+
+    for (QGraphicsItem *item : m_scene->items()) {
+        auto *other = dynamic_cast<MapFeature *>(item);
+        if (!other || other == feature || !isClosedArea(other->kind()))
+            continue;
+
+        QPolygonF polygon = other->polygon();
+        bool changed = false;
+        for (const QPointF &point : generated) {
+            if (insertOnEdge(polygon, point, kTolerance))
+                changed = true;
+        }
+        if (changed)
+            other->setPolygon(polygon);
+    }
+
+    QPolygonF polygon = generated;
+    bool changed = false;
+    for (QGraphicsItem *item : m_scene->items()) {
+        auto *other = dynamic_cast<MapFeature *>(item);
+        if (!other || other == feature || !isClosedArea(other->kind()))
+            continue;
+        for (const QPointF &point : other->polygon()) {
+            if (insertOnEdge(polygon, point, kTolerance))
+                changed = true;
+        }
+    }
+    if (changed)
+        feature->setPolygon(polygon);
+}
+
 void MainWindow::addRandomLand(int count, bool fill)
 {
     Q_UNUSED(fill);
@@ -1429,7 +1508,8 @@ void MainWindow::addRandomLand(int count, bool fill)
     for (int i = 0; i < count; ++i) {
         const QPointF center = randomWorldPoint();
         const double radius = 120.0 + QRandomGenerator::global()->generateDouble() * 280.0;
-        addLand(randomBlob(center, radius));
+        MapFeature *land = addLand(randomBlob(center, radius));
+        shareControlPoints(land);
         ++added;
     }
     statusBar()->showMessage(tr("Added %1 random land areas.").arg(added), 2500);
@@ -1473,6 +1553,7 @@ void MainWindow::addRandomCountries(int count, bool fill)
         country->name = tr("Country %1").arg(featureCount(FeatureKind::Country) + 1);
         country->color = nextCountryColor();
         m_scene->addItem(country);
+        shareControlPoints(country);
         ++added;
     }
     if (added > 0)
@@ -1514,6 +1595,7 @@ void MainWindow::addRandomRegions(int count, bool fill)
         region->countryName = country->name;
         region->color = country->color;
         m_scene->addItem(region);
+        shareControlPoints(region);
         ++added;
     }
     if (added > 0)
@@ -1599,6 +1681,7 @@ void MainWindow::fillCountryWithRegions(MapFeature *country, int count)
         region->countryName = country->name;
         region->color = country->color;
         m_scene->addItem(region);
+        shareControlPoints(region);
     }
 
     pushHistory();
@@ -1628,6 +1711,7 @@ void MainWindow::fillLandWithCountries(MapFeature *land, int count)
         country->name = tr("Country %1").arg(featureCount(FeatureKind::Country) + 1);
         country->color = nextCountryColor();
         m_scene->addItem(country);
+        shareControlPoints(country);
     }
 
     pushHistory();
@@ -1732,6 +1816,7 @@ void MainWindow::addRandomTerrainAreas(int count, bool fill, int unchartedPercen
             }
             m_scene->addItem(area);
             terrainAreas.append(area);
+            shareControlPoints(area);
         }
         pushHistory();
         statusBar()->showMessage(tr("Filled the area with %1 terrain areas, %2 uncharted.")
@@ -1768,6 +1853,7 @@ void MainWindow::addRandomTerrainAreas(int count, bool fill, int unchartedPercen
                                     : compatibleTerrain(polygon, terrainAreas);
         m_scene->addItem(area);
         terrainAreas.append(area);
+        shareControlPoints(area);
     }
     pushHistory();
     statusBar()->showMessage(tr("Added %1 random terrain areas, %2 uncharted.")
@@ -2331,7 +2417,7 @@ MapFeature *MainWindow::addBigLand()
     return land;
 }
 
-void MainWindow::addLand(const QPolygonF &polygon)
+MapFeature *MainWindow::addLand(const QPolygonF &polygon)
 {
     QPainterPath drawn;
     drawn.addPolygon(polygon);
@@ -2367,6 +2453,7 @@ void MainWindow::addLand(const QPolygonF &polygon)
     m_scene->addItem(land);
     pushHistory();
     statusBar()->showMessage(absorbed.isEmpty() ? tr("Land added.") : tr("Land merged."), 2000);
+    return land;
 }
 
 void MainWindow::addCountry(const QPolygonF &polygon)

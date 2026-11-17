@@ -75,7 +75,9 @@ the vacated space. When a country or land
 area is selected, **Add Random Regions...** / **Add Random Countries...** (or
 `Generate > Fill Selected Area...`) fills the leftover space around the
 existing children with a chosen number of non-overlapping pieces. Existing
-regions and countries are kept. Visiting a settlement in Explore mode adds a
+regions and countries are kept. Corners of generated areas that land on a
+border become control points on that border, so the pieces stay connected when
+the border is edited. Visiting a settlement in Explore mode adds a
 line to the **Travel Log** dock; `File > Export Travel Log...` or the dock's
 **Export...** button saves it as a text file.
 
