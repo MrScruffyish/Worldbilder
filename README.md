@@ -40,8 +40,9 @@ Two modes, switched in the toolbar or with `F1` / `F2`:
   `Ctrl+Z` / `Ctrl+Shift+Z` undo and redo map changes. With **Select / Move**
   active, click an item to select it, drag the item to move it, or drag one of
   its control points to reshape it (a point snaps to nearby borders and slides
-  along them). Moving a point also moves any other feature point at the same
-  spot, so shared borders stay joined. Right-click a control point and choose
+  along them). Moving a point also moves every other feature point at the same
+  spot and splits the border of any feature whose line passes through the
+  point, so connected borders stay joined. Right-click a control point and choose
   **Replace Control Point**, then click the new position to move that point
   there; `Esc` cancels. Right-click a border between two control points and
   choose **Add Control Point** to insert a point there; the border is highlighted

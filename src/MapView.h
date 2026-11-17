@@ -85,6 +85,8 @@ private:
                        double threshold) const;
     int segmentAt(const MapFeature *feature, const QPointF &scenePos, double threshold,
                   QPointF *closest) const;
+    int edgeContaining(const MapFeature *feature, const QPointF &scenePos,
+                       double threshold) const;
     void moveCoincidentPoints(const QPointF &from, const QPointF &to);
     void insertControlPoint(MapFeature *feature, int segmentIndex, const QPointF &point);
     bool isLineTool() const
@@ -116,7 +118,13 @@ private:
         MapFeature *feature = nullptr;
         QPolygonF polygon;
     };
+    struct SharedEdge {
+        MapFeature *feature = nullptr;
+        QPolygonF polygon;
+        int segment = -1;
+    };
     QVector<SharedPolygon> m_dragSharedPolygons;
+    QVector<SharedEdge> m_dragSharedEdges;
     bool m_geometryChanged = false;
     bool m_replacingPoint = false;
     int m_replaceIndex = -1;

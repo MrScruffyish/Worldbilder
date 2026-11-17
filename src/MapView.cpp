@@ -272,6 +272,7 @@ void MapView::mousePressEvent(QMouseEvent *event)
                 m_dragOriginalPolygon = m_editSelection->polygon();
                 m_dragOriginalPoint = m_editSelection->point();
                 m_dragSharedPolygons.clear();
+                m_dragSharedEdges.clear();
                 if (m_editSelection->kind() != FeatureKind::Settlement) {
                     m_dragVertex = m_dragOriginalPolygon.value(index);
                     for (QGraphicsItem *item : scene()->items()) {
@@ -279,12 +280,19 @@ void MapView::mousePressEvent(QMouseEvent *event)
                         if (!other || other->kind() == FeatureKind::Settlement)
                             continue;
                         const QPolygonF polygon = other->polygon();
+                        bool sharedVertex = false;
                         for (const QPointF &point : polygon) {
                             if (QLineF(point, m_dragVertex).length() <= kSharedPointTolerance) {
                                 m_dragSharedPolygons.append({other, polygon});
+                                sharedVertex = true;
                                 break;
                             }
                         }
+                        if (sharedVertex)
+                            continue;
+                        const int segment = edgeContaining(other, m_dragVertex, kSharedPointTolerance);
+                        if (segment >= 0)
+                            m_dragSharedEdges.append({other, polygon, segment});
                     }
                 }
                 m_geometryChanged = false;
@@ -304,6 +312,7 @@ void MapView::mousePressEvent(QMouseEvent *event)
             m_dragOriginalPolygon = feature->polygon();
             m_dragOriginalPoint = feature->point();
             m_dragSharedPolygons.clear();
+            m_dragSharedEdges.clear();
             m_geometryChanged = false;
         }
         event->accept();
@@ -340,7 +349,8 @@ void MapView::mouseMoveEvent(QMouseEvent *event)
             const QPointF original = m_editSelection->kind() == FeatureKind::Settlement
                                          ? m_dragOriginalPoint
                                          : m_dragVertex;
-            if (QLineF(original, target).length() > 0.01)
+            const bool moved = QLineF(original, target).length() > 0.01;
+            if (moved)
                 m_geometryChanged = true;
 
             if (m_editSelection->kind() == FeatureKind::Settlement) {
@@ -352,6 +362,12 @@ void MapView::mouseMoveEvent(QMouseEvent *event)
                         if (QLineF(point, m_dragVertex).length() <= kSharedPointTolerance)
                             point = target;
                     }
+                    shared.feature->setPolygon(polygon);
+                }
+                for (const SharedEdge &shared : m_dragSharedEdges) {
+                    QPolygonF polygon = shared.polygon;
+                    if (moved && shared.segment + 1 <= polygon.size())
+                        polygon.insert(shared.segment + 1, target);
                     shared.feature->setPolygon(polygon);
                 }
             }
@@ -507,10 +523,13 @@ void MapView::keyPressEvent(QKeyEvent *event)
         } else {
             for (const SharedPolygon &shared : m_dragSharedPolygons)
                 shared.feature->setPolygon(shared.polygon);
+            for (const SharedEdge &shared : m_dragSharedEdges)
+                shared.feature->setPolygon(shared.polygon);
         }
         m_draggingSelection = false;
         m_dragIndex = -1;
         m_dragSharedPolygons.clear();
+        m_dragSharedEdges.clear();
         m_geometryChanged = false;
         viewport()->update();
         event->accept();
@@ -805,8 +824,39 @@ int MapView::segmentAt(const MapFeature *feature, const QPointF &scenePos, doubl
     return best;
 }
 
+int MapView::edgeContaining(const MapFeature *feature, const QPointF &scenePos,
+                            double threshold) const
+{
+    if (!feature || feature->kind() == FeatureKind::Settlement)
+        return -1;
+
+    const QPolygonF polygon = feature->polygon();
+    if (polygon.size() < 2)
+        return -1;
+
+    const bool closed = feature->kind() != FeatureKind::Road
+                        && feature->kind() != FeatureKind::River
+                        && feature->kind() != FeatureKind::Railroad;
+    const int segments = closed ? polygon.size() : polygon.size() - 1;
+    for (int i = 0; i < segments; ++i) {
+        const QPointF &a = polygon.at(i);
+        const QPointF &b = polygon.at((i + 1) % polygon.size());
+        QPointF closest;
+        if (distanceToSegment(scenePos, a, b, &closest) > threshold)
+            continue;
+        if (QLineF(closest, a).length() > threshold
+            && QLineF(closest, b).length() > threshold) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 void MapView::moveCoincidentPoints(const QPointF &from, const QPointF &to)
 {
+    if (QLineF(from, to).length() <= 0.01)
+        return;
+
     for (QGraphicsItem *item : scene()->items()) {
         auto *feature = dynamic_cast<MapFeature *>(item);
         if (!feature || feature->kind() == FeatureKind::Settlement)
@@ -817,6 +867,13 @@ void MapView::moveCoincidentPoints(const QPointF &from, const QPointF &to)
         for (QPointF &point : polygon) {
             if (QLineF(point, from).length() <= kSharedPointTolerance) {
                 point = to;
+                changed = true;
+            }
+        }
+        if (!changed) {
+            const int segment = edgeContaining(feature, from, kSharedPointTolerance);
+            if (segment >= 0) {
+                polygon.insert(segment + 1, to);
                 changed = true;
             }
         }
@@ -920,6 +977,7 @@ void MapView::mouseReleaseEvent(QMouseEvent *event)
         m_draggingSelection = false;
         m_dragIndex = -1;
         m_dragSharedPolygons.clear();
+        m_dragSharedEdges.clear();
         m_snapValid = false;
         if (m_geometryChanged)
             emit featureEdited();
