@@ -36,7 +36,8 @@ Two modes, switched in the toolbar or with `F1` / `F2`:
 - **Edit** - pick a tool from the left palette and click map points;
   double-click, right-click or `Enter` closes the polygon, `Esc` cancels.
   Middle-drag pans while editing. Near a corner or border the cursor shows
-  **click to snap** and uses that point. Regions are clipped to their country.
+  **click to snap** and uses that point. Regions are clipped to their country
+  and terrain areas to the land, so neither extends outside it.
   `Ctrl+Z` / `Ctrl+Shift+Z` undo and redo map changes. With **Select / Move**
   active, click an item to select it, drag the item to move it, or drag one of
   its control points to reshape it (a point snaps to nearby borders and slides

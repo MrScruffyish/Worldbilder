@@ -1841,12 +1841,20 @@ void MainWindow::addRandomTerrainAreas(int count, bool fill, int unchartedPercen
         unchartedCount = 1;
     unchartedCount = qBound(0, unchartedCount, count);
 
+    int added = 0;
+    int addedUncharted = 0;
     for (int i = 0; i < count; ++i) {
         const bool isUncharted = i < unchartedCount;
         const double radius = isUncharted
                                   ? 100.0 + QRandomGenerator::global()->generateDouble() * 180.0
                                   : 50.0 + QRandomGenerator::global()->generateDouble() * 140.0;
-        const QPolygonF polygon = randomBlob(randomLandPoint(), radius);
+        QPolygonF polygon;
+        for (int attempt = 0; attempt < 20 && polygon.size() < 3; ++attempt) {
+            polygon = clipToLand(randomBlob(randomLandPoint(), radius));
+        }
+        if (polygon.size() < 3)
+            continue;
+
         auto *area = new MapFeature(FeatureKind::TerrainArea);
         area->setPolygon(polygon);
         area->terrain = isUncharted ? TerrainType::Uncharted
@@ -1854,11 +1862,14 @@ void MainWindow::addRandomTerrainAreas(int count, bool fill, int unchartedPercen
         m_scene->addItem(area);
         terrainAreas.append(area);
         shareControlPoints(area);
+        ++added;
+        if (isUncharted)
+            ++addedUncharted;
     }
     pushHistory();
     statusBar()->showMessage(tr("Added %1 random terrain areas, %2 uncharted.")
-                                 .arg(count)
-                                 .arg(unchartedCount),
+                                 .arg(added)
+                                 .arg(addedUncharted),
                              2500);
 }
 
@@ -2466,8 +2477,15 @@ void MainWindow::addCountry(const QPolygonF &polygon)
     if (!ok || name.isEmpty())
         return;
 
+    const QPolygonF clipped = clipToLand(polygon);
+    if (clipped.size() < 3) {
+        QMessageBox::information(this, tr("New Country"),
+                                 tr("Draw the country on the land."));
+        return;
+    }
+
     auto *country = new MapFeature(FeatureKind::Country);
-    country->setPolygon(clipToLand(polygon));
+    country->setPolygon(clipped);
     country->name = name;
     country->color = nextCountryColor();
     m_scene->addItem(country);
@@ -2477,8 +2495,14 @@ void MainWindow::addCountry(const QPolygonF &polygon)
 
 void MainWindow::addTerrainArea(const QPolygonF &polygon)
 {
+    const QPolygonF clipped = clipToLand(polygon);
+    if (clipped.size() < 3) {
+        statusBar()->showMessage(tr("Draw terrain on the land."), 2500);
+        return;
+    }
+
     auto *area = new MapFeature(FeatureKind::TerrainArea);
-    area->setPolygon(polygon);
+    area->setPolygon(clipped);
     area->terrain = currentTerrain();
     m_scene->addItem(area);
     pushHistory();
@@ -2646,10 +2670,10 @@ QPolygonF MainWindow::clipToLand(const QPolygonF &polygon) const
     shape.addPolygon(polygon);
     shape.closeSubpath();
     if (!shape.intersects(land))
-        return polygon;
+        return {};
 
     const QPolygonF clipped = shape.intersected(land).toFillPolygon();
-    return clipped.size() >= 3 ? clipped : polygon;
+    return clipped.size() >= 3 ? clipped : QPolygonF();
 }
 
 void MainWindow::addSettlement(const QPointF &point)
