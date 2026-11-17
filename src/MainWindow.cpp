@@ -18,6 +18,7 @@
 #include <QGraphicsScene>
 #include <QHBoxLayout>
 #include <QIcon>
+#include <QImage>
 #include <QInputDialog>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -29,7 +30,11 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QMessageBox>
+#include <QPageLayout>
+#include <QPageSize>
+#include <QPainter>
 #include <QPainterPath>
+#include <QPdfWriter>
 #include <QPainterPathStroker>
 #include <QPixmap>
 #include <QPlainTextEdit>
@@ -39,6 +44,7 @@
 #include <QStatusBar>
 #include <QTabWidget>
 #include <QTimer>
+#include <QTransform>
 #include <QToolBar>
 #include <QVBoxLayout>
 #include <QWidget>
@@ -566,6 +572,98 @@ void MainWindow::exportTravelLog()
     }
     file.write(m_logView->toPlainText().toUtf8());
     statusBar()->showMessage(tr("Travel log exported to %1.").arg(QFileInfo(path).fileName()), 2500);
+}
+
+void MainWindow::exportPdf(bool a3)
+{
+    QString path = QFileDialog::getSaveFileName(this, tr("Export Map as PDF"),
+                                                QStringLiteral("map.pdf"),
+                                                tr("PDF files (*.pdf)"));
+    if (path.isEmpty())
+        return;
+    if (!path.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive))
+        path += QStringLiteral(".pdf");
+
+    if (writePdf(path, a3))
+        statusBar()->showMessage(tr("Map exported to %1.").arg(QFileInfo(path).fileName()),
+                                 2500);
+}
+
+bool MainWindow::writePdf(const QString &path, bool a3)
+{
+    QRectF source = m_scene->itemsBoundingRect();
+    if (source.isEmpty()) {
+        QMessageBox::information(this, tr("Export Map as PDF"),
+                                 tr("The map is empty."));
+        return false;
+    }
+    source.adjust(-10, -10, 10, 10);
+
+    QPdfWriter writer(path);
+    writer.setPageSize(QPageSize(a3 ? QPageSize::A3 : QPageSize::A4));
+    writer.setPageOrientation(QPageLayout::Portrait);
+    writer.setResolution(300);
+    writer.setPageMargins(QMarginsF(10, 10, 10, 10), QPageLayout::Millimeter);
+    writer.setTitle(tr("World Map"));
+
+    // QPdfWriter's painter is already inset by the page margins.
+    const QSize pageSize(writer.width(), writer.height());
+    if (pageSize.isEmpty()) {
+        QMessageBox::warning(this, tr("Export Map as PDF"),
+                             tr("Could not write %1.").arg(path));
+        return false;
+    }
+
+    // The page is always portrait, so a landscape map is turned a quarter turn
+    // to use the page height.
+    const bool rotate = source.width() > source.height();
+    const double fitWidth = rotate ? source.height() : source.width();
+    const double fitHeight = rotate ? source.width() : source.height();
+    const double scale = qMin(pageSize.width() / fitWidth,
+                              pageSize.height() / fitHeight);
+
+    QVector<MapFeature *> highlighted;
+    for (QGraphicsItem *item : m_scene->items()) {
+        auto *feature = dynamic_cast<MapFeature *>(item);
+        if (feature && feature->highlighted) {
+            highlighted.append(feature);
+            feature->highlighted = false;
+        }
+    }
+
+    const QSize mapSize(qRound(source.width() * scale), qRound(source.height() * scale));
+    QImage map(mapSize, QImage::Format_RGB32);
+    map.fill(Qt::white);
+    QPainter painter(&map);
+    painter.setRenderHint(QPainter::Antialiasing);
+    painter.setRenderHint(QPainter::TextAntialiasing);
+    painter.scale(scale, scale);
+    painter.translate(-source.left(), -source.top());
+    m_scene->render(&painter, QRectF(0, 0, source.width(), source.height()), source,
+                    Qt::IgnoreAspectRatio);
+    painter.end();
+
+    if (rotate)
+        map = map.transformed(QTransform().rotate(90), Qt::SmoothTransformation);
+
+    QImage image(pageSize, QImage::Format_RGB32);
+    image.fill(Qt::white);
+    QPainter pagePainter(&image);
+    pagePainter.drawImage(QPoint((pageSize.width() - map.width()) / 2,
+                                 (pageSize.height() - map.height()) / 2),
+                          map);
+    pagePainter.end();
+
+    for (MapFeature *feature : highlighted) {
+        feature->highlighted = true;
+        feature->update();
+    }
+
+    const QImage gray = image.convertToFormat(QImage::Format_Grayscale8);
+    QPainter pdfPainter(&writer);
+    pdfPainter.drawImage(QPoint(0, 0), gray);
+    pdfPainter.end();
+    return true;
 }
 
 void MainWindow::selectFeature(MapFeature *feature)
@@ -2276,6 +2374,12 @@ void MainWindow::createActions()
     auto *exportLogAction = new QAction(tr("Export Travel Log..."), this);
     connect(exportLogAction, &QAction::triggered, this, &MainWindow::exportTravelLog);
 
+    auto *exportPdfA4Action = new QAction(tr("Export Map as PDF (A4)..."), this);
+    connect(exportPdfA4Action, &QAction::triggered, this, [this] { exportPdf(false); });
+
+    auto *exportPdfA3Action = new QAction(tr("Export Map as PDF (A3)..."), this);
+    connect(exportPdfA3Action, &QAction::triggered, this, [this] { exportPdf(true); });
+
     auto *resizeAction = new QAction(tr("Resize World..."), this);
     connect(resizeAction, &QAction::triggered, this, &MainWindow::resizeWorld);
 
@@ -2298,6 +2402,8 @@ void MainWindow::createActions()
     fileMenu->addAction(saveAsAction);
     fileMenu->addSeparator();
     fileMenu->addAction(exportLogAction);
+    fileMenu->addAction(exportPdfA4Action);
+    fileMenu->addAction(exportPdfA3Action);
     fileMenu->addSeparator();
     fileMenu->addAction(resizeAction);
     fileMenu->addSeparator();

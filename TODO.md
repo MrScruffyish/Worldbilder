@@ -1,12 +1,12 @@
 Overall rule: Do everything very simple at first, no backwards compatability, commit with terse messages when one task is done. Avoid tests for now.
 
 # TODO
-44. if not done already, a black-white export function to pdf (portrait, so rotate map if needed), a4 or a3.
 
 # Things to ignore for now.
 Add a tool for smoothing the map (i.e. a little bit more smoth lines but still with som wiggle so it does not look like a triangle or square, but more a "natural" shape with some bends or shapes along the line. Can the map still be worked upon after that? 
 
 # DONE
+44. if not done already, a black-white export function to pdf (portrait, so rotate map if needed), a4 or a3.
 43. terrain regions must also always adhere to the rule in 42 so they dont extend outside of land.
 42. Land, countries, regions, roads, rivers, etc, they are all constructed by controll points, and the control points of the land set an outer bound for all other control points, so modifying a cp for land, all other controll points must be checked so they stay on the inside of the land.
 41. When generating random areas, if a corner or line point ends up as a snapped to a line, that should be a controlpoint. 
