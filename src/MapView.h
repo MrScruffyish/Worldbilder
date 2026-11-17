@@ -4,6 +4,7 @@
 #include <QPolygonF>
 #include <QSizeF>
 #include <QString>
+#include <QVector>
 
 class QGraphicsScene;
 class QContextMenuEvent;
@@ -82,6 +83,10 @@ private:
     MapFeature *featureAt(const QPointF &scenePos) const;
     int controlPointAt(const MapFeature *feature, const QPointF &scenePos,
                        double threshold) const;
+    int segmentAt(const MapFeature *feature, const QPointF &scenePos, double threshold,
+                  QPointF *closest) const;
+    void moveCoincidentPoints(const QPointF &from, const QPointF &to);
+    void insertControlPoint(MapFeature *feature, int segmentIndex, const QPointF &point);
     bool isLineTool() const
     {
         return m_tool == Tool::Road || m_tool == Tool::River || m_tool == Tool::Railroad;
@@ -106,6 +111,12 @@ private:
     QPointF m_dragStartScene;
     QPolygonF m_dragOriginalPolygon;
     QPointF m_dragOriginalPoint;
+    QPointF m_dragVertex;
+    struct SharedPolygon {
+        MapFeature *feature = nullptr;
+        QPolygonF polygon;
+    };
+    QVector<SharedPolygon> m_dragSharedPolygons;
     bool m_geometryChanged = false;
     bool m_replacingPoint = false;
     int m_replaceIndex = -1;

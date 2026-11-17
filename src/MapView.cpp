@@ -20,6 +20,8 @@
 
 namespace {
 
+constexpr double kSharedPointTolerance = 0.1;
+
 QCursor walkingCursor()
 {
     static const QCursor cursor = [] {
@@ -213,10 +215,9 @@ void MapView::mousePressEvent(QMouseEvent *event)
             if (m_editSelection->kind() == FeatureKind::Settlement) {
                 m_editSelection->setPoint(target);
             } else {
-                QPolygonF polygon = m_editSelection->polygon();
+                const QPolygonF polygon = m_editSelection->polygon();
                 if (m_replaceIndex < polygon.size())
-                    polygon[m_replaceIndex] = target;
-                m_editSelection->setPolygon(polygon);
+                    moveCoincidentPoints(polygon.at(m_replaceIndex), target);
             }
 
             m_replacingPoint = false;
@@ -270,6 +271,22 @@ void MapView::mousePressEvent(QMouseEvent *event)
                 m_dragStartScene = scenePos;
                 m_dragOriginalPolygon = m_editSelection->polygon();
                 m_dragOriginalPoint = m_editSelection->point();
+                m_dragSharedPolygons.clear();
+                if (m_editSelection->kind() != FeatureKind::Settlement) {
+                    m_dragVertex = m_dragOriginalPolygon.value(index);
+                    for (QGraphicsItem *item : scene()->items()) {
+                        auto *other = dynamic_cast<MapFeature *>(item);
+                        if (!other || other->kind() == FeatureKind::Settlement)
+                            continue;
+                        const QPolygonF polygon = other->polygon();
+                        for (const QPointF &point : polygon) {
+                            if (QLineF(point, m_dragVertex).length() <= kSharedPointTolerance) {
+                                m_dragSharedPolygons.append({other, polygon});
+                                break;
+                            }
+                        }
+                    }
+                }
                 m_geometryChanged = false;
                 viewport()->update();
                 event->accept();
@@ -286,6 +303,7 @@ void MapView::mousePressEvent(QMouseEvent *event)
             m_dragStartScene = scenePos;
             m_dragOriginalPolygon = feature->polygon();
             m_dragOriginalPoint = feature->point();
+            m_dragSharedPolygons.clear();
             m_geometryChanged = false;
         }
         event->accept();
@@ -321,17 +339,21 @@ void MapView::mouseMoveEvent(QMouseEvent *event)
             const QPointF target = m_snapValid ? m_snapPoint : scenePos;
             const QPointF original = m_editSelection->kind() == FeatureKind::Settlement
                                          ? m_dragOriginalPoint
-                                         : m_dragOriginalPolygon.value(m_dragIndex);
+                                         : m_dragVertex;
             if (QLineF(original, target).length() > 0.01)
                 m_geometryChanged = true;
 
             if (m_editSelection->kind() == FeatureKind::Settlement) {
                 m_editSelection->setPoint(target);
             } else {
-                QPolygonF polygon = m_dragOriginalPolygon;
-                if (m_dragIndex < polygon.size())
-                    polygon[m_dragIndex] = target;
-                m_editSelection->setPolygon(polygon);
+                for (const SharedPolygon &shared : m_dragSharedPolygons) {
+                    QPolygonF polygon = shared.polygon;
+                    for (QPointF &point : polygon) {
+                        if (QLineF(point, m_dragVertex).length() <= kSharedPointTolerance)
+                            point = target;
+                    }
+                    shared.feature->setPolygon(polygon);
+                }
             }
         } else {
             const QPointF delta = scenePos - m_dragStartScene;
@@ -409,17 +431,48 @@ void MapView::contextMenuEvent(QContextMenuEvent *event)
         }
     }
 
-    if (!feature || index < 0) {
+    if (feature && index >= 0) {
+        QMenu menu(this);
+        QAction *replaceAction = menu.addAction(tr("Replace Control Point"));
+        if (menu.exec(event->globalPos()) == replaceAction) {
+            m_cursor = scenePos;
+            beginPointReplacement(feature, index);
+        }
+        event->accept();
+        return;
+    }
+
+    // No corner under the cursor: offer to add one on the nearest border.
+    MapFeature *segmentFeature = nullptr;
+    int segmentIndex = -1;
+    QPointF insertPoint;
+    if (m_editSelection) {
+        segmentIndex = segmentAt(m_editSelection, scenePos, threshold, &insertPoint);
+        if (segmentIndex >= 0)
+            segmentFeature = m_editSelection;
+    }
+    if (!segmentFeature) {
+        MapFeature *candidate = featureAt(scenePos);
+        if (candidate) {
+            const int candidateIndex = segmentAt(candidate, scenePos, threshold, &insertPoint);
+            if (candidateIndex >= 0) {
+                segmentFeature = candidate;
+                segmentIndex = candidateIndex;
+                setEditSelection(candidate);
+                emit featureSelected(candidate);
+            }
+        }
+    }
+
+    if (!segmentFeature || segmentIndex < 0) {
         QGraphicsView::contextMenuEvent(event);
         return;
     }
 
     QMenu menu(this);
-    QAction *replaceAction = menu.addAction(tr("Replace Control Point"));
-    if (menu.exec(event->globalPos()) == replaceAction) {
-        m_cursor = scenePos;
-        beginPointReplacement(feature, index);
-    }
+    QAction *addAction = menu.addAction(tr("Add Control Point"));
+    if (menu.exec(event->globalPos()) == addAction)
+        insertControlPoint(segmentFeature, segmentIndex, insertPoint);
     event->accept();
 }
 
@@ -439,12 +492,15 @@ void MapView::keyPressEvent(QKeyEvent *event)
     }
 
     if (m_draggingSelection && m_editSelection && event->key() == Qt::Key_Escape) {
-        if (m_editSelection->kind() == FeatureKind::Settlement)
+        if (m_editSelection->kind() == FeatureKind::Settlement) {
             m_editSelection->setPoint(m_dragOriginalPoint);
-        else
-            m_editSelection->setPolygon(m_dragOriginalPolygon);
+        } else {
+            for (const SharedPolygon &shared : m_dragSharedPolygons)
+                shared.feature->setPolygon(shared.polygon);
+        }
         m_draggingSelection = false;
         m_dragIndex = -1;
+        m_dragSharedPolygons.clear();
         m_geometryChanged = false;
         viewport()->update();
         event->accept();
@@ -675,6 +731,109 @@ int MapView::controlPointAt(const MapFeature *feature, const QPointF &scenePos,
     return -1;
 }
 
+int MapView::segmentAt(const MapFeature *feature, const QPointF &scenePos, double threshold,
+                       QPointF *closest) const
+{
+    if (!feature || feature->kind() == FeatureKind::Settlement)
+        return -1;
+
+    const QPolygonF polygon = feature->polygon();
+    if (polygon.size() < 2)
+        return -1;
+
+    const bool closed = feature->kind() != FeatureKind::Road
+                        && feature->kind() != FeatureKind::River
+                        && feature->kind() != FeatureKind::Railroad;
+    const int segments = closed ? polygon.size() : polygon.size() - 1;
+
+    int best = -1;
+    double bestDistance = threshold;
+    QPointF bestPoint;
+    for (int i = 0; i < segments; ++i) {
+        QPointF point;
+        const double distance = distanceToSegment(scenePos, polygon.at(i),
+                                                  polygon.at((i + 1) % polygon.size()), &point);
+        if (distance <= bestDistance) {
+            bestDistance = distance;
+            best = i;
+            bestPoint = point;
+        }
+    }
+
+    if (best >= 0 && closest)
+        *closest = bestPoint;
+    return best;
+}
+
+void MapView::moveCoincidentPoints(const QPointF &from, const QPointF &to)
+{
+    for (QGraphicsItem *item : scene()->items()) {
+        auto *feature = dynamic_cast<MapFeature *>(item);
+        if (!feature || feature->kind() == FeatureKind::Settlement)
+            continue;
+
+        QPolygonF polygon = feature->polygon();
+        bool changed = false;
+        for (QPointF &point : polygon) {
+            if (QLineF(point, from).length() <= kSharedPointTolerance) {
+                point = to;
+                changed = true;
+            }
+        }
+        if (changed)
+            feature->setPolygon(polygon);
+    }
+}
+
+void MapView::insertControlPoint(MapFeature *feature, int segmentIndex, const QPointF &point)
+{
+    if (!feature || feature->kind() == FeatureKind::Settlement || segmentIndex < 0)
+        return;
+
+    const QPolygonF source = feature->polygon();
+    if (segmentIndex >= source.size())
+        return;
+
+    const QPointF start = source.at(segmentIndex);
+    const QPointF end = source.at((segmentIndex + 1) % source.size());
+    if (QLineF(start, end).length() < 0.001)
+        return;
+
+    bool changed = false;
+    for (QGraphicsItem *item : scene()->items()) {
+        auto *other = dynamic_cast<MapFeature *>(item);
+        if (!other || other->kind() == FeatureKind::Settlement)
+            continue;
+
+        QPolygonF polygon = other->polygon();
+        if (polygon.size() < 2)
+            continue;
+
+        const bool closed = other->kind() != FeatureKind::Road
+                            && other->kind() != FeatureKind::River
+                            && other->kind() != FeatureKind::Railroad;
+        const int segments = closed ? polygon.size() : polygon.size() - 1;
+        for (int i = 0; i < segments; ++i) {
+            const QPointF a = polygon.at(i);
+            const QPointF b = polygon.at((i + 1) % polygon.size());
+            const bool same = (QLineF(a, start).length() <= kSharedPointTolerance
+                               && QLineF(b, end).length() <= kSharedPointTolerance)
+                              || (QLineF(a, end).length() <= kSharedPointTolerance
+                                  && QLineF(b, start).length() <= kSharedPointTolerance);
+            if (!same)
+                continue;
+
+            polygon.insert(i + 1, point);
+            other->setPolygon(polygon);
+            changed = true;
+            break;
+        }
+    }
+
+    if (changed)
+        emit featureEdited();
+}
+
 void MapView::finishDraft()
 {
     if (m_draft.size() < minimumDraftPoints()) {
@@ -720,6 +879,7 @@ void MapView::mouseReleaseEvent(QMouseEvent *event)
     if (m_draggingSelection) {
         m_draggingSelection = false;
         m_dragIndex = -1;
+        m_dragSharedPolygons.clear();
         m_snapValid = false;
         if (m_geometryChanged)
             emit featureEdited();

@@ -374,7 +374,7 @@ MainWindow::MainWindow(QWidget *parent)
         if (m_selected)
             selectFeature(m_selected);
         pushHistory();
-        statusBar()->showMessage(tr("Item moved."), 1500);
+        statusBar()->showMessage(tr("Map changed."), 1500);
     });
     connect(m_view, &MapView::deleteRequested, this, &MainWindow::deleteSelectedFeature);
 
@@ -2054,7 +2054,8 @@ void MainWindow::createActions()
     connect(m_selectAction, &QAction::triggered, this, [this] {
         setMode(MapView::Mode::Edit);
         m_view->setTool(MapView::Tool::None);
-        statusBar()->showMessage(tr("Select an item or a control point and drag it. Esc cancels a drag."));
+        statusBar()->showMessage(tr("Select an item or a control point and drag it. "
+                                    "Right-click a border to add a point. Esc cancels a drag."));
     });
     toolGroup->addAction(m_selectAction);
 
