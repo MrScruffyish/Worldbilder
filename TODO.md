@@ -1,12 +1,14 @@
 Overall rule: Do everything very simple at first, no backwards compatability, commit with terse messages when one task is done. Avoid tests for now.
 
 # TODO
-
+43. terrain regions must also always adhere to the rule in 42 so they dont extend outside of land.
+44. if not done already, a black-white export function to pdf (portrait, so rotate map if needed), a4 or a3.
 
 # Things to ignore for now.
-Add a tool for smoothing the map (i.e. a little bit more smoth lines but still with som wiggle so it does not look like a triangle or square, but more a "natural" shape with some bends or shapes along the line.
+Add a tool for smoothing the map (i.e. a little bit more smoth lines but still with som wiggle so it does not look like a triangle or square, but more a "natural" shape with some bends or shapes along the line. It should be a final operation, 
 
 # DONE
+42. Land, countries, regions, roads, rivers, etc, they are all constructed by controll points, and the control points of the land set an outer bound for all other control points, so modifying a cp for land, all other controll points must be checked so they stay on the inside of the land.
 41. When generating random areas, if a corner or line point ends up as a snapped to a line, that should be a controlpoint. 
 40. Some auto-fill with cities, towns, villages  (like for 1 city, 2-3 towns and 6-10 villages?) Cities are not supposed to end up too close to each other, otherwise fine to place stuff anywhere. Some stuff should be snapped to coast line. some few villages could be snapped to a region/country limit but clearly on one side of it.   Fill should be done per region or for a country (fill each region then). In harsh land, there should be much fewer settlements, if any.
 39. Glacier is also a terrain.

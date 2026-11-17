@@ -17,6 +17,7 @@
 #include <QWheelEvent>
 
 #include <algorithm>
+#include <limits>
 
 namespace {
 
@@ -218,6 +219,10 @@ void MapView::mousePressEvent(QMouseEvent *event)
                 const QPolygonF polygon = m_editSelection->polygon();
                 if (m_replaceIndex < polygon.size())
                     moveCoincidentPoints(polygon.at(m_replaceIndex), target);
+                if (m_editSelection->kind() == FeatureKind::Land
+                    && keepFeaturesInsideLand()) {
+                    m_geometryChanged = true;
+                }
             }
 
             m_replacingPoint = false;
@@ -273,6 +278,7 @@ void MapView::mousePressEvent(QMouseEvent *event)
                 m_dragOriginalPoint = m_editSelection->point();
                 m_dragSharedPolygons.clear();
                 m_dragSharedEdges.clear();
+                m_dragClampedFeatures.clear();
                 if (m_editSelection->kind() != FeatureKind::Settlement) {
                     m_dragVertex = m_dragOriginalPolygon.value(index);
                     for (QGraphicsItem *item : scene()->items()) {
@@ -313,6 +319,7 @@ void MapView::mousePressEvent(QMouseEvent *event)
             m_dragOriginalPoint = feature->point();
             m_dragSharedPolygons.clear();
             m_dragSharedEdges.clear();
+            m_dragClampedFeatures.clear();
             m_geometryChanged = false;
         }
         event->accept();
@@ -369,6 +376,10 @@ void MapView::mouseMoveEvent(QMouseEvent *event)
                     if (moved && shared.segment + 1 <= polygon.size())
                         polygon.insert(shared.segment + 1, target);
                     shared.feature->setPolygon(polygon);
+                }
+                if (m_editSelection->kind() == FeatureKind::Land
+                    && keepFeaturesInsideLand()) {
+                    m_geometryChanged = true;
                 }
             }
         } else {
@@ -521,6 +532,12 @@ void MapView::keyPressEvent(QKeyEvent *event)
         if (m_editSelection->kind() == FeatureKind::Settlement) {
             m_editSelection->setPoint(m_dragOriginalPoint);
         } else {
+            for (const Backup &backup : m_dragClampedFeatures) {
+                if (backup.feature->kind() == FeatureKind::Settlement)
+                    backup.feature->setPoint(backup.point);
+                else
+                    backup.feature->setPolygon(backup.polygon);
+            }
             for (const SharedPolygon &shared : m_dragSharedPolygons)
                 shared.feature->setPolygon(shared.polygon);
             for (const SharedEdge &shared : m_dragSharedEdges)
@@ -530,6 +547,7 @@ void MapView::keyPressEvent(QKeyEvent *event)
         m_dragIndex = -1;
         m_dragSharedPolygons.clear();
         m_dragSharedEdges.clear();
+        m_dragClampedFeatures.clear();
         m_geometryChanged = false;
         viewport()->update();
         event->accept();
@@ -882,6 +900,89 @@ void MapView::moveCoincidentPoints(const QPointF &from, const QPointF &to)
     }
 }
 
+/// Land control points bound the whole map: any other feature point that ends
+/// up outside the land is pushed back onto the nearest land border.
+bool MapView::keepFeaturesInsideLand()
+{
+    QPainterPath land;
+    QVector<QPolygonF> landPolygons;
+    for (QGraphicsItem *item : scene()->items()) {
+        auto *feature = dynamic_cast<MapFeature *>(item);
+        if (!feature || feature->kind() != FeatureKind::Land)
+            continue;
+        const QPolygonF polygon = feature->polygon();
+        if (polygon.size() < 3)
+            continue;
+        land.addPolygon(polygon);
+        land.closeSubpath();
+        landPolygons.append(polygon);
+    }
+    if (landPolygons.isEmpty())
+        return false;
+
+    auto keepInside = [&land, &landPolygons](QPointF point) {
+        if (land.contains(point))
+            return point;
+
+        double bestDistance = std::numeric_limits<double>::max();
+        QPointF bestPoint = point;
+        for (const QPolygonF &polygon : landPolygons) {
+            for (int i = 0; i < polygon.size(); ++i) {
+                QPointF closest;
+                const double distance = distanceToSegment(point, polygon.at(i),
+                                                          polygon.at((i + 1) % polygon.size()),
+                                                          &closest);
+                if (distance < bestDistance) {
+                    bestDistance = distance;
+                    bestPoint = closest;
+                }
+            }
+        }
+        return bestPoint;
+    };
+
+    auto remember = [this](MapFeature *feature) {
+        for (const Backup &backup : m_dragClampedFeatures) {
+            if (backup.feature == feature)
+                return;
+        }
+        m_dragClampedFeatures.append({feature, feature->polygon(), feature->point()});
+    };
+
+    bool changed = false;
+    for (QGraphicsItem *item : scene()->items()) {
+        auto *feature = dynamic_cast<MapFeature *>(item);
+        if (!feature || feature->kind() == FeatureKind::Land)
+            continue;
+
+        if (feature->kind() == FeatureKind::Settlement) {
+            const QPointF point = keepInside(feature->point());
+            if (QLineF(point, feature->point()).length() > 0.01) {
+                remember(feature);
+                feature->setPoint(point);
+                changed = true;
+            }
+            continue;
+        }
+
+        QPolygonF polygon = feature->polygon();
+        bool featureChanged = false;
+        for (QPointF &point : polygon) {
+            const QPointF inside = keepInside(point);
+            if (QLineF(inside, point).length() > 0.01) {
+                point = inside;
+                featureChanged = true;
+            }
+        }
+        if (featureChanged) {
+            remember(feature);
+            feature->setPolygon(polygon);
+            changed = true;
+        }
+    }
+    return changed;
+}
+
 void MapView::insertControlPoint(MapFeature *feature, int segmentIndex, const QPointF &point)
 {
     if (!feature || feature->kind() == FeatureKind::Settlement || segmentIndex < 0)
@@ -978,6 +1079,7 @@ void MapView::mouseReleaseEvent(QMouseEvent *event)
         m_dragIndex = -1;
         m_dragSharedPolygons.clear();
         m_dragSharedEdges.clear();
+        m_dragClampedFeatures.clear();
         m_snapValid = false;
         if (m_geometryChanged)
             emit featureEdited();
