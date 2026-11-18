@@ -574,7 +574,7 @@ void MainWindow::exportTravelLog()
     statusBar()->showMessage(tr("Travel log exported to %1.").arg(QFileInfo(path).fileName()), 2500);
 }
 
-void MainWindow::exportPdf(bool a3)
+void MainWindow::exportPdf(bool a3, bool colour)
 {
     QString path = QFileDialog::getSaveFileName(this, tr("Export Map as PDF"),
                                                 QStringLiteral("map.pdf"),
@@ -584,12 +584,12 @@ void MainWindow::exportPdf(bool a3)
     if (!path.endsWith(QStringLiteral(".pdf"), Qt::CaseInsensitive))
         path += QStringLiteral(".pdf");
 
-    if (writePdf(path, a3))
+    if (writePdf(path, a3, colour))
         statusBar()->showMessage(tr("Map exported to %1.").arg(QFileInfo(path).fileName()),
                                  2500);
 }
 
-bool MainWindow::writePdf(const QString &path, bool a3)
+bool MainWindow::writePdf(const QString &path, bool a3, bool colour)
 {
     QRectF source = m_scene->itemsBoundingRect();
     if (source.isEmpty()) {
@@ -659,9 +659,12 @@ bool MainWindow::writePdf(const QString &path, bool a3)
         feature->update();
     }
 
-    const QImage gray = image.convertToFormat(QImage::Format_Grayscale8);
     QPainter pdfPainter(&writer);
-    pdfPainter.drawImage(QPoint(0, 0), gray);
+    if (colour)
+        pdfPainter.drawImage(QPoint(0, 0), image);
+    else
+        pdfPainter.drawImage(QPoint(0, 0),
+                             image.convertToFormat(QImage::Format_Grayscale8));
     pdfPainter.end();
     return true;
 }
@@ -2374,11 +2377,19 @@ void MainWindow::createActions()
     auto *exportLogAction = new QAction(tr("Export Travel Log..."), this);
     connect(exportLogAction, &QAction::triggered, this, &MainWindow::exportTravelLog);
 
-    auto *exportPdfA4Action = new QAction(tr("Export Map as PDF (A4)..."), this);
-    connect(exportPdfA4Action, &QAction::triggered, this, [this] { exportPdf(false); });
+    auto *exportPdfA4Action = new QAction(tr("Export Map as B/W PDF (A4)..."), this);
+    connect(exportPdfA4Action, &QAction::triggered, this, [this] { exportPdf(false, false); });
 
-    auto *exportPdfA3Action = new QAction(tr("Export Map as PDF (A3)..."), this);
-    connect(exportPdfA3Action, &QAction::triggered, this, [this] { exportPdf(true); });
+    auto *exportPdfA3Action = new QAction(tr("Export Map as B/W PDF (A3)..."), this);
+    connect(exportPdfA3Action, &QAction::triggered, this, [this] { exportPdf(true, false); });
+
+    auto *exportColourPdfA4Action = new QAction(tr("Export Map as Colour PDF (A4)..."), this);
+    connect(exportColourPdfA4Action, &QAction::triggered, this,
+            [this] { exportPdf(false, true); });
+
+    auto *exportColourPdfA3Action = new QAction(tr("Export Map as Colour PDF (A3)..."), this);
+    connect(exportColourPdfA3Action, &QAction::triggered, this,
+            [this] { exportPdf(true, true); });
 
     auto *resizeAction = new QAction(tr("Resize World..."), this);
     connect(resizeAction, &QAction::triggered, this, &MainWindow::resizeWorld);
@@ -2402,8 +2413,11 @@ void MainWindow::createActions()
     fileMenu->addAction(saveAsAction);
     fileMenu->addSeparator();
     fileMenu->addAction(exportLogAction);
+    fileMenu->addSeparator();
     fileMenu->addAction(exportPdfA4Action);
     fileMenu->addAction(exportPdfA3Action);
+    fileMenu->addAction(exportColourPdfA4Action);
+    fileMenu->addAction(exportColourPdfA3Action);
     fileMenu->addSeparator();
     fileMenu->addAction(resizeAction);
     fileMenu->addSeparator();

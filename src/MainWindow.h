@@ -33,8 +33,8 @@ private:
     void createLogDock();
     void logTravel(const QString &entry);
     void exportTravelLog();
-    void exportPdf(bool a3);
-    bool writePdf(const QString &path, bool a3);
+    void exportPdf(bool a3, bool colour);
+    bool writePdf(const QString &path, bool a3, bool colour);
     void setMode(MapView::Mode mode);
     void chooseNewWorld();
     void newWorld(bool land);

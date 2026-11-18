@@ -82,9 +82,10 @@ regions and countries are kept. Corners of generated areas that land on a
 border become control points on that border, so the pieces stay connected when
 the border is edited. Visiting a settlement in Explore mode adds a
 line to the **Travel Log** dock; `File > Export Travel Log...` or the dock's
-**Export...** button saves it as a text file. `File > Export Map as PDF (A4)`
-or **(A3)** writes a black-and-white portrait PDF; a landscape map is rotated
-to fit the page.
+**Export...** button saves it as a text file. `File > Export Map as B/W PDF
+(A4)` / **(A3)** and **Export Map as Colour PDF (A4)** / **(A3)** write a
+portrait PDF in black-and-white or colour; a landscape map is rotated to fit
+the page.
 
 In Explore mode, click a settlement to start travelling. Click another
 settlement, region or country to walk there; the log shows how many days the
